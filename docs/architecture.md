@@ -18,11 +18,21 @@ CodeRunner/
 
 ## 🧩 How It Works
 
-1.  **The Workspace**: The student opens the web interface and creates a temporary workspace. They can type code directly or import local files/folders.
-2.  **Submission**: When "Run" is clicked, the editor bundles the necessary source files and sends them to the server.
-3.  **Isolation**: The server creates a unique, temporary directory and spins up a language-specific Docker container.
-4.  **Execution**: The files are mounted into the container, and the entry point (e.g., `main.py`) is executed.
-5.  **Result**: Standard output (`stdout`) and errors (`stderr`) are captured and displayed in the browser's terminal console.
+The system uses a **Warm Container Pool** strategy to minimize execution latency.
+
+1.  **Initialization**: On startup, the server pre-warms a set of Docker containers (default: 3 per language) that sit idle, waiting for requests.
+2.  **Submission**: When a student clicks "Run", the frontend bundles the source files and identifies the entry point (marked with `toBeExec: true`).
+3.  **Acquisition**: The server instantly acquires an idle container from the pool (0ms overhead). If the pool is empty, it creates a new one on demand.
+4.  **File Transfer**: The server writes the files to a temporary directory on the host and copies them into the running container using `docker cp`.
+5.  **Execution**: The entry file is executed inside the container using `docker exec`.
+6.  **Recycling**: After execution, the used container is killed and removed to ensure isolation. A new container is immediately started in the background to replenish the pool.
+
+## ⚡ Performance Optimization
+
+To avoid the "Cold Start" penalty of Docker (which can take 1-2 seconds per request), CodeRunner maintains a pool of running containers.
+
+- **Cold Start**: `docker run` -> Mount -> Execute -> Stop. (~1.5s latency)
+- **Warm Pool**: `docker cp` -> `docker exec`. (~100ms latency)
 
 ## 🛡️ Security Features
 

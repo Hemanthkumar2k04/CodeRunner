@@ -4,5 +4,3 @@ RUN pip install --no-cache-dir numpy
 RUN useradd -m runner
 USER runner
 WORKDIR /app
-
-CMD ["python", "main.py"]

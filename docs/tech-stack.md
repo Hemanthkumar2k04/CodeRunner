@@ -1,6 +1,7 @@
 # Technology Stack
 
 ## Frontend
+
 - **Language**: TypeScript
 - **Framework**: React
 - **Styling**: TailwindCSS
@@ -8,6 +9,7 @@
 - **Code Editor**: Monaco Editor
 
 ## Backend
+
 - **Language**: TypeScript
 - **Runtime**: Node.js
 - **API Framework**: Express (API Layer)

@@ -13,12 +13,13 @@
 The code runner relies on Docker images to execute code. You must build the runtime images before using the runner.
 
 **Python Runtime:**
+
 ```bash
 cd runtimes/python
 docker build -t python-runtime .
 ```
 
-*> Note: The system also supports `cpp` and `javascript`, but you will need to build `cpp-runtime` and `node-runtime` images for them to work.*
+_> Note: The system also supports `cpp` and `javascript`, but you will need to build `cpp-runtime` and `node-runtime` images for them to work._
 
 ### 2. Backend Setup
 
