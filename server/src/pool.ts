@@ -20,6 +20,9 @@ class ContainerPool {
    * Initialize the pool with warm containers
    */
   async initialize() {
+    // Ensure we start clean by removing any old containers from previous runs
+    await this.cleanup();
+
     console.log('Initializing Container Pool...');
     const promises = [];
     for (const lang of Object.keys(config.runtimes)) {
@@ -40,8 +43,9 @@ class ContainerPool {
 
     try {
       // Start a container that stays alive (tail -f /dev/null)
+      // Added --label to identify our containers for cleanup
       const { stdout } = await execAsync(
-        `docker run -d --network ${config.docker.network} --memory ${config.docker.memory} --cpus ${config.docker.cpus} ${runtimeConfig.image} tail -f /dev/null`
+        `docker run -d --label type=coderunner-worker --network ${config.docker.network} --memory ${config.docker.memory} --cpus ${config.docker.cpus} ${runtimeConfig.image} tail -f /dev/null`
       );
       
       const containerId = stdout.trim();
@@ -75,18 +79,24 @@ class ContainerPool {
   }
 
   /**
-   * Cleanup all containers in the pool
+   * Cleanup all containers in the pool (and any orphans)
    */
   async cleanup() {
     console.log('Cleaning up container pool...');
-    const promises = [];
+    
+    // 1. Clear in-memory pool
     for (const lang of Object.keys(this.pool)) {
-      for (const containerId of this.pool[lang]) {
-        promises.push(execAsync(`docker rm -f ${containerId}`));
-      }
-      this.pool[lang] = []; // Clear the pool
+      this.pool[lang] = [];
     }
-    await Promise.all(promises);
+
+    // 2. Force remove ALL containers labeled as coderunner-worker
+    // This catches containers from this session AND previous crashed sessions
+    try {
+      await execAsync('docker rm -f $(docker ps -aq --filter label=type=coderunner-worker)');
+    } catch (e) {
+      // Ignore error if no containers found (docker rm fails if list is empty)
+    }
+    
     console.log('Container Pool Cleaned Up 🧹');
   }
 }

@@ -47,5 +47,5 @@ docker build -t node-runtime .
 cd ../..
 
 echo -e "\n${GREEN}✅ Setup Complete!${NC}"
-echo -e "To start the server:  ${BLUE}cd server && npm run dev${NC}"
-echo -e "To start the client:  ${BLUE}cd client && npm run dev${NC}"
+echo -e "To start the server:  ${BLUE}cd server && sudo npm run dev${NC}"
+echo -e "To start the client:  ${BLUE}cd client && sudo npm run dev${NC}"
