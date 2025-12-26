@@ -1,12 +1,22 @@
 import express from 'express';
 import cors from 'cors';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
 import { containerPool } from './pool';
 import { config } from './config';
 
 const app = express();
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
+
 const PORT = config.server.port;
 
 // Middleware
@@ -27,7 +37,7 @@ export interface RunResult {
 
 function getRunCommand(language: string, entryFile: string): string {
   switch(language) {
-    case 'python': return `python ${entryFile}`;
+    case 'python': return `python -u ${entryFile}`; // -u for unbuffered output
     case 'javascript': return `node ${entryFile}`;
     case 'cpp': return 'g++ -o app *.cpp && ./app';
     case 'java': {
@@ -38,8 +48,142 @@ function getRunCommand(language: string, entryFile: string): string {
   }
 }
 
+// --- WebSocket Handling ---
+io.on('connection', (socket) => {
+  console.log('Client connected:', socket.id);
+  let currentProcess: any = null;
+  let tempDir: string | null = null;
+  let containerId: string | null = null;
+  let currentLanguage: string | null = null;
+
+  socket.on('run', async (data: { language: string, files: File[] }) => {
+    const { language, files } = data;
+    currentLanguage = language;
+
+    const runtimeConfig = config.runtimes[language as keyof typeof config.runtimes];
+    if (!runtimeConfig) {
+      socket.emit('output', { type: 'stderr', data: `Error: Unsupported language '${language}'\n` });
+      socket.emit('exit', 1);
+      return;
+    }
+
+    // Find entry file
+    const entryFile = files.find(f => f.toBeExec);
+    if (!entryFile && language !== 'cpp') {
+       socket.emit('output', { type: 'stderr', data: 'Error: No entry file marked for execution.\n' });
+       socket.emit('exit', 1);
+       return;
+    }
+
+    let command = '';
+    try {
+        command = getRunCommand(language, entryFile ? entryFile.name : '');
+    } catch (e: any) {
+        socket.emit('output', { type: 'stderr', data: e.message + '\n' });
+        socket.emit('exit', 1);
+        return;
+    }
+
+    // 1. Get container
+    try {
+      containerId = await containerPool.getContainer(language);
+    } catch (e) {
+      socket.emit('output', { type: 'stderr', data: 'System Error: Failed to acquire container\n' });
+      socket.emit('exit', 1);
+      return;
+    }
+
+    const runId = Date.now().toString() + Math.random().toString(36).substring(7);
+    tempDir = path.resolve(__dirname, '..', 'temp', `runner-${runId}`);
+
+    // 2. Write files
+    try {
+      fs.mkdirSync(tempDir, { recursive: true });
+      for (const file of files) {
+        const safeName = path.basename(file.name); 
+        fs.writeFileSync(path.join(tempDir, safeName), file.content);
+      }
+    } catch (err: any) {
+      cleanup();
+      socket.emit('output', { type: 'stderr', data: `System Error: ${err.message}\n` });
+      socket.emit('exit', 1);
+      return;
+    }
+
+    // 3. Copy files
+    const cpCommand = `docker cp "${tempDir}/." ${containerId}:/app/`;
+    exec(cpCommand, (cpError) => {
+      if (cpError) {
+        cleanup();
+        socket.emit('output', { type: 'stderr', data: `System Error (Copy): ${cpError.message}\n` });
+        socket.emit('exit', 1);
+        return;
+      }
+
+      // 4. Spawn process
+      // Use -i for interactive (keeps stdin open)
+      const dockerArgs = [
+        'exec',
+        '-i', 
+        '-w', '/app',
+        containerId!,
+        '/bin/sh', '-c', command
+      ];
+
+      currentProcess = spawn('docker', dockerArgs);
+
+      currentProcess.stdout.on('data', (chunk: Buffer) => {
+        socket.emit('output', { type: 'stdout', data: chunk.toString() });
+      });
+
+      currentProcess.stderr.on('data', (chunk: Buffer) => {
+        socket.emit('output', { type: 'stderr', data: chunk.toString() });
+      });
+
+      currentProcess.on('close', (code: number) => {
+        socket.emit('exit', code);
+        cleanup();
+      });
+
+      currentProcess.on('error', (err: any) => {
+        socket.emit('output', { type: 'stderr', data: `Process Error: ${err.message}\n` });
+        cleanup();
+      });
+    });
+  });
+
+  socket.on('input', (data: string) => {
+    if (currentProcess && currentProcess.stdin) {
+      currentProcess.stdin.write(data);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    if (currentProcess) {
+      currentProcess.kill();
+    }
+    cleanup();
+  });
+
+  function cleanup() {
+    if (tempDir) {
+      try {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      } catch (e) { /* ignore */ }
+      tempDir = null;
+    }
+    if (containerId && currentLanguage) {
+      containerPool.recycleContainer(currentLanguage, containerId);
+      containerId = null;
+    }
+    currentProcess = null;
+  }
+});
+
+
 /**
  * Runs a multi-file project using a WARM container from the pool
+ * @deprecated Use WebSocket 'run' event for interactive execution
  */
 export function runProject(language: string, files: File[]): Promise<RunResult> {
   return new Promise(async (resolve) => {
@@ -176,7 +320,7 @@ if (require.main === module) {
   });
 
   containerPool.initialize().then(() => {
-    const server = app.listen(Number(PORT), '0.0.0.0', () => {
+    const server = httpServer.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`Server running on http://localhost:${PORT}`);
       console.log(`Network access: http://<your-ip-address>:${PORT}`);
     });
