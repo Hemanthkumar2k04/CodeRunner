@@ -1,7 +1,21 @@
 import { io, Socket } from 'socket.io-client';
 import { useEditorStore } from '@/stores/useEditorStore';
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3000';
+// Dynamically determine server URL:
+// 1. Use VITE_SERVER_URL env var if set
+// 2. Otherwise, use the same hostname as the browser but with port 3000
+const getServerUrl = (): string => {
+  if (import.meta.env.VITE_SERVER_URL) {
+    return import.meta.env.VITE_SERVER_URL;
+  }
+  // Use the same host the browser is accessing, but with port 3000
+  const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+  const hostname = window.location.hostname;
+  return `${protocol}//${hostname}:3000`;
+};
+
+const SERVER_URL = getServerUrl();
+console.log('[Socket] Server URL:', SERVER_URL);
 
 let socket: Socket | null = null;
 let connectionPromise: Promise<void> | null = null;
