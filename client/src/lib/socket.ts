@@ -19,11 +19,12 @@ console.log('[Socket] Server URL:', SERVER_URL);
 
 let socket: Socket | null = null;
 let connectionPromise: Promise<void> | null = null;
-let listenersAttached = false;
 
 const attachListeners = (sock: Socket) => {
-  if (listenersAttached) return;
-  listenersAttached = true;
+  // Remove any existing listeners first to avoid duplicates
+  sock.off('output');
+  sock.off('exit');
+  sock.off('error');
 
   sock.on('output', (data: { type: 'stdout' | 'stderr'; data: string }) => {
     console.log('[Socket] Received output:', data);
@@ -52,6 +53,8 @@ const attachListeners = (sock: Socket) => {
   sock.onAny((event, ...args) => {
     console.log('[Socket] Event:', event, args);
   });
+
+  console.log('[Socket] Listeners attached');
 };
 
 export const connectSocket = (): Socket => {
