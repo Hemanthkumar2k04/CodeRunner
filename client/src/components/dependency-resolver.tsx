@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useEditorStore, type FileNode } from '@/stores/useEditorStore';
+import type { EditorState } from '@/stores/useEditorStore';
 import { useSocket } from '@/hooks/useSocket';
 import {
   getLanguageFromExtension,
@@ -31,13 +32,13 @@ interface DependencyResolverProps {
 }
 
 export function DependencyResolver({ open, onOpenChange }: DependencyResolverProps) {
-  const files = useEditorStore((state) => state.files);
-  const rootIds = useEditorStore((state) => state.rootIds);
-  const activeFileId = useEditorStore((state) => state.activeFileId);
-  const isRunning = useEditorStore((state) => state.isRunning);
-  const selectedFilesForRun = useEditorStore((state) => state.selectedFilesForRun);
-  const setSelectedFilesForRun = useEditorStore((state) => state.setSelectedFilesForRun);
-  const appendOutput = useEditorStore((state) => state.appendOutput);
+  const files = useEditorStore((state: EditorState) => state.files);
+  const rootIds = useEditorStore((state: EditorState) => state.rootIds);
+  const activeFileId = useEditorStore((state: EditorState) => state.activeFileId);
+  const isRunning = useEditorStore((state: EditorState) => state.isRunning);
+  const selectedFilesForRun = useEditorStore((state: EditorState) => state.selectedFilesForRun);
+  const setSelectedFilesForRun = useEditorStore((state: EditorState) => state.setSelectedFilesForRun);
+  const appendOutput = useEditorStore((state: EditorState) => state.appendOutput);
   const { runCode } = useSocket();
 
   const [localSelected, setLocalSelected] = useState<Set<string>>(new Set());
@@ -71,7 +72,7 @@ export function DependencyResolver({ open, onOpenChange }: DependencyResolverPro
         }
       });
       // Add previously selected source files that are still compatible
-      selectedFilesForRun.forEach((id) => {
+      selectedFilesForRun.forEach((id: string) => {
         const file = allFiles.find((f) => f.id === id);
         if (file && !isDataFile(file.name) && getLanguageFromExtension(file.name) === activeLanguage) {
           initial.add(id);

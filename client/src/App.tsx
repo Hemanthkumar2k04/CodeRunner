@@ -7,13 +7,14 @@ import { CodeEditor } from './components/CodeEditor';
 import { Console } from './components/Console';
 import { useSocket } from './hooks/useSocket';
 import { useEditorStore } from './stores/useEditorStore';
+import type { EditorState } from './stores/useEditorStore';
 import { getLanguageFromExtension, flattenTree, isLanguageSupported, isDataFile } from './lib/file-utils';
 
 function AppContent() {
   const { runCode, disconnect } = useSocket();
-  const files = useEditorStore((state) => state.files);
-  const rootIds = useEditorStore((state) => state.rootIds);
-  const activeFileId = useEditorStore((state) => state.activeFileId);
+  const files = useEditorStore((state: EditorState) => state.files);
+  const rootIds = useEditorStore((state: EditorState) => state.rootIds);
+  const activeFileId = useEditorStore((state: EditorState) => state.activeFileId);
 
   // Panel sizing state
   const [sidebarWidth, setSidebarWidth] = useState(250);

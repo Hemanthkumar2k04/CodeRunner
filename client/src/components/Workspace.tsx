@@ -11,6 +11,7 @@ import {
   FileCode,
 } from 'lucide-react';
 import { useEditorStore } from '@/stores/useEditorStore';
+import type { EditorState } from '@/stores/useEditorStore';
 import { sortFileNodes } from '@/lib/file-utils';
 import { FileIcon } from '@/components/FileIcon';
 import { Button } from '@/components/ui/button';
@@ -70,10 +71,10 @@ interface FileTreeNodeProps {
 
 function FileTreeNode({ nodeId, depth, onContextAction, selectedNodeId, onSelectNode }: FileTreeNodeProps) {
   const [isExpanded, setIsExpanded] = useState(true);
-  const files = useEditorStore((state) => state.files);
-  const activeFileId = useEditorStore((state) => state.activeFileId);
-  const setActiveFile = useEditorStore((state) => state.setActiveFile);
-  const openTab = useEditorStore((state) => state.openTab);
+  const files = useEditorStore((state: EditorState) => state.files);
+  const activeFileId = useEditorStore((state: EditorState) => state.activeFileId);
+  const setActiveFile = useEditorStore((state: EditorState) => state.setActiveFile);
+  const openTab = useEditorStore((state: EditorState) => state.openTab);
   const node = files[nodeId];
 
   if (!node) return null;
@@ -215,12 +216,12 @@ function FileTreeNode({ nodeId, depth, onContextAction, selectedNodeId, onSelect
 }
 
 export function Workspace() {
-  const files = useEditorStore((state) => state.files);
-  const rootIds = useEditorStore((state) => state.rootIds);
-  const addFile = useEditorStore((state) => state.addFile);
-  const addFolder = useEditorStore((state) => state.addFolder);
-  const deleteNode = useEditorStore((state) => state.deleteNode);
-  const renameNode = useEditorStore((state) => state.renameNode);
+  const files = useEditorStore((state: EditorState) => state.files);
+  const rootIds = useEditorStore((state: EditorState) => state.rootIds);
+  const addFile = useEditorStore((state: EditorState) => state.addFile);
+  const addFolder = useEditorStore((state: EditorState) => state.addFolder);
+  const deleteNode = useEditorStore((state: EditorState) => state.deleteNode);
+  const renameNode = useEditorStore((state: EditorState) => state.renameNode);
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [dialogState, setDialogState] = useState<DialogState>({
@@ -424,7 +425,7 @@ export function Workspace() {
         </ScrollArea>
 
         {/* New File/Folder/Rename Dialog */}
-        <Dialog open={dialogState.type !== null} onOpenChange={(open) => !open && closeDialog()}>
+        <Dialog open={dialogState.type !== null} onOpenChange={(open: boolean) => !open && closeDialog()}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>{getDialogTitle()}</DialogTitle>
@@ -463,7 +464,7 @@ export function Workspace() {
         {/* Delete Confirmation Dialog */}
         <AlertDialog
           open={deleteConfirm !== null}
-          onOpenChange={(open) => !open && setDeleteConfirm(null)}
+          onOpenChange={(open: boolean) => !open && setDeleteConfirm(null)}
         >
           <AlertDialogContent>
             <AlertDialogHeader>

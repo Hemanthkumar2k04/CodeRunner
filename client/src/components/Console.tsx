@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import AnsiToHtml from 'ansi-to-html';
 import { useEditorStore } from '@/stores/useEditorStore';
+import type { EditorState } from '@/stores/useEditorStore';
 import { useSocket } from '@/hooks/useSocket';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,9 +42,9 @@ const ansiConverter = new AnsiToHtml({
 });
 
 export function Console() {
-  const output = useEditorStore((state) => state.output);
-  const isRunning = useEditorStore((state) => state.isRunning);
-  const clearOutput = useEditorStore((state) => state.clearOutput);
+  const output = useEditorStore((state: EditorState) => state.output);
+  const isRunning = useEditorStore((state: EditorState) => state.isRunning);
+  const clearOutput = useEditorStore((state: EditorState) => state.clearOutput);
   const { sendInput } = useSocket();
   const [inputValue, setInputValue] = useState('');
   const [autoScroll, setAutoScroll] = useState(true);
@@ -148,7 +149,7 @@ export function Console() {
                 Output will appear here when you run your code...
               </div>
             ) : (
-              output.map((entry, index) => (
+              output.map((entry: any, index: number) => (
                 <div key={`${entry.timestamp}-${index}`}>
                   {renderOutput(entry.data, entry.type)}
                 </div>

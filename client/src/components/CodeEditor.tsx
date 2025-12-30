@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import Editor from '@monaco-editor/react';
 import { useTheme } from './theme-provider';
 import { useEditorStore } from '@/stores/useEditorStore';
+import type { EditorState } from '@/stores/useEditorStore';
 import { getMonacoLanguage, getLanguageFromExtension, formatBytes, getFileSize } from '@/lib/file-utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -22,14 +23,14 @@ interface CodeEditorProps {
 
 export function CodeEditor({ onRunClick }: CodeEditorProps) {
   const { theme } = useTheme();
-  const files = useEditorStore((state) => state.files);
-  const activeFileId = useEditorStore((state) => state.activeFileId);
-  const openTabs = useEditorStore((state) => state.openTabs);
-  const isRunning = useEditorStore((state) => state.isRunning);
-  const setActiveFile = useEditorStore((state) => state.setActiveFile);
-  const closeTab = useEditorStore((state) => state.closeTab);
-  const updateContent = useEditorStore((state) => state.updateContent);
-  const markAsSaved = useEditorStore((state) => state.markAsSaved);
+  const files = useEditorStore((state: EditorState) => state.files);
+  const activeFileId = useEditorStore((state: EditorState) => state.activeFileId);
+  const openTabs = useEditorStore((state: EditorState) => state.openTabs);
+  const isRunning = useEditorStore((state: EditorState) => state.isRunning);
+  const setActiveFile = useEditorStore((state: EditorState) => state.setActiveFile);
+  const closeTab = useEditorStore((state: EditorState) => state.closeTab);
+  const updateContent = useEditorStore((state: EditorState) => state.updateContent);
+  const markAsSaved = useEditorStore((state: EditorState) => state.markAsSaved);
 
   const activeFile = activeFileId ? files[activeFileId] : null;
   const language = activeFile ? getMonacoLanguage(activeFile.name) : 'plaintext';
@@ -97,7 +98,7 @@ export function CodeEditor({ onRunClick }: CodeEditorProps) {
         <div className="flex items-center border-b bg-muted/30 shrink-0">
           <ScrollArea className="flex-1">
             <div className="flex">
-              {openTabs.map((tabId) => {
+              {openTabs.map((tabId: string) => {
                 const file = files[tabId];
                 if (!file) return null;
                 const isActive = tabId === activeFileId;
