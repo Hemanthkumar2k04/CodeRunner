@@ -19,6 +19,7 @@ function AppContent() {
   // Panel sizing state
   const [sidebarWidth, setSidebarWidth] = useState(250);
   const [consoleHeight, setConsoleHeight] = useState(200);
+  const [isConsoleMinimized, setIsConsoleMinimized] = useState(false);
   
   // Resize state
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
@@ -55,6 +56,8 @@ function AppContent() {
       }));
 
     if (compatibleFiles.length > 0) {
+      // Expand console when running code
+      setIsConsoleMinimized(false);
       runCode(compatibleFiles, activeLanguage);
     }
   }, [activeFileId, files, rootIds, runCode]);
@@ -73,7 +76,7 @@ function AppContent() {
         const newWidth = Math.max(200, Math.min(500, e.clientX));
         setSidebarWidth(newWidth);
       }
-      if (isResizingConsole && containerRef.current) {
+      if (isResizingConsole && containerRef.current && !isConsoleMinimized) {
         const containerRect = containerRef.current.getBoundingClientRect();
         const newHeight = Math.max(150, Math.min(600, containerRect.bottom - e.clientY));
         setConsoleHeight(newHeight);
@@ -98,7 +101,10 @@ function AppContent() {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [isResizingSidebar, isResizingConsole]);
+  }, [isResizingSidebar, isResizingConsole, isConsoleMinimized]);
+
+  // Calculate the actual console height based on minimized state
+  const actualConsoleHeight = isConsoleMinimized ? 52 : consoleHeight; // 52px for header only
 
   return (
     <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
@@ -139,37 +145,44 @@ function AppContent() {
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {/* Code Editor */}
           <div className="flex-1 min-h-0 overflow-hidden">
-            <CodeEditor onRunClick={handleRunClick} />
+            <CodeEditor 
+              onRunClick={handleRunClick}
+            />
           </div>
 
-          {/* Console Resize Handle - Enhanced */}
-          <div
-            className={`group relative h-1 w-full flex-shrink-0 transition-all cursor-row-resize hover:h-1.5 ${
-              isResizingConsole 
-                ? 'bg-primary h-1.5' 
-                : 'bg-border hover:bg-primary/60'
-            }`}
-            onMouseDown={() => setIsResizingConsole(true)}
-          >
-            {/* Visual indicator on hover */}
-            <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              <div className="h-full w-full bg-primary/20" />
-            </div>
-            {/* Center grip indicator */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-              <div className="flex gap-1 p-1 rounded bg-primary/10">
-                <div className="w-3 h-0.5 bg-primary/60 rounded-full" />
-                <div className="w-3 h-0.5 bg-primary/60 rounded-full" />
+          {/* Console Resize Handle - Only show when not minimized */}
+          {!isConsoleMinimized && (
+            <div
+              className={`group relative h-1 w-full flex-shrink-0 transition-all cursor-row-resize hover:h-1.5 ${
+                isResizingConsole 
+                  ? 'bg-primary h-1.5' 
+                  : 'bg-border hover:bg-primary/60'
+              }`}
+              onMouseDown={() => setIsResizingConsole(true)}
+            >
+              {/* Visual indicator on hover */}
+              <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="h-full w-full bg-primary/20" />
+              </div>
+              {/* Center grip indicator */}
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex gap-1 p-1 rounded bg-primary/10">
+                  <div className="w-3 h-0.5 bg-primary/60 rounded-full" />
+                  <div className="w-3 h-0.5 bg-primary/60 rounded-full" />
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Console */}
           <div 
-            className="flex-shrink-0 overflow-hidden"
-            style={{ height: consoleHeight }}
+            className="flex-shrink-0 overflow-hidden transition-all duration-200"
+            style={{ height: actualConsoleHeight }}
           >
-            <Console />
+            <Console 
+              isMinimized={isConsoleMinimized}
+              onToggleMinimize={() => setIsConsoleMinimized(!isConsoleMinimized)}
+            />
           </div>
         </div>
       </main>
