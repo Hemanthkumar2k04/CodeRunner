@@ -24,5 +24,8 @@ export const config = {
     java: {
       image: 'java-runtime',
     },
+    sql: {
+      image: 'mysql-runtime',
+    },
   },
 };

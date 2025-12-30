@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import Editor from '@monaco-editor/react';
+import Editor, { type Monaco } from '@monaco-editor/react';
 import { useTheme } from './theme-provider';
 import { useEditorStore } from '@/stores/useEditorStore';
 import type { EditorState } from '@/stores/useEditorStore';
@@ -35,6 +35,17 @@ export function CodeEditor({ onRunClick }: CodeEditorProps) {
   const activeFile = activeFileId ? files[activeFileId] : null;
   const language = activeFile ? getMonacoLanguage(activeFile.name) : 'plaintext';
   const execLanguage = activeFile ? getLanguageFromExtension(activeFile.name) : null;
+
+  const handleEditorWillMount = useCallback((monaco: Monaco) => {
+    // Ensure all necessary languages are registered and available
+    // This fixes issues with language support like Java syntax highlighting
+    const languages = ['java', 'python', 'javascript', 'cpp', 'c'];
+    languages.forEach((lang) => {
+      if (!monaco.languages.getLanguages().find((l) => l.id === lang)) {
+        monaco.languages.register({ id: lang });
+      }
+    });
+  }, []);
 
   const handleTabClick = useCallback((tabId: string) => {
       setActiveFile(tabId);
@@ -208,6 +219,7 @@ export function CodeEditor({ onRunClick }: CodeEditorProps) {
             value={activeFile?.content ?? ''}
             onChange={handleEditorChange}
             theme={theme === 'dark' ? 'vs-dark' : 'light'}
+            beforeMount={handleEditorWillMount}
             options={{
               minimap: { enabled: false },
               fontSize: 14,

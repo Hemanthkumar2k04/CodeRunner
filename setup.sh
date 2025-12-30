@@ -7,16 +7,23 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}🚀 Starting CodeRunner Setup...${NC}"
 
+# Check and load nvm if available
+if [ -s "$HOME/.nvm/nvm.sh" ]; then
+  . "$HOME/.nvm/nvm.sh"
+  echo -e "${BLUE}📌 Using NVM to manage Node.js versions...${NC}"
+  nvm use
+fi
+
 # 1. Install Server Dependencies
 echo -e "\n${BLUE}📦 Installing Server Dependencies...${NC}"
 cd server
-npm install
+npm ci
 cd ..
 
 # 2. Install Client Dependencies
 echo -e "\n${BLUE}📦 Installing Client Dependencies...${NC}"
 cd client
-npm install
+npm ci
 cd ..
 
 # 3. Build Docker Runtimes
@@ -44,6 +51,12 @@ cd ../..
 echo -e "${GREEN}Building Node.js Runtime...${NC}"
 cd runtimes/javascript
 docker build -t node-runtime .
+cd ../..
+
+# MySQL
+echo -e "${GREEN}Building MySQL Runtime...${NC}"
+cd runtimes/mysql
+docker build -t mysql-runtime .
 cd ../..
 
 echo -e "\n${GREEN}✅ Setup Complete!${NC}"

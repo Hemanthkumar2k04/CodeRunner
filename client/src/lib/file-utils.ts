@@ -1,7 +1,7 @@
 import type { FileNode } from '@/stores/useEditorStore';
 
 // Language mappings for execution
-export const SUPPORTED_LANGUAGES = ['python', 'javascript', 'java', 'cpp'] as const;
+export const SUPPORTED_LANGUAGES = ['python', 'javascript', 'java', 'cpp', 'sql'] as const;
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
 
 // Extension to language mapping
@@ -26,6 +26,9 @@ const extensionToLanguage: Record<string, SupportedLanguage> = {
   '.c': 'cpp',
   '.h': 'cpp',
   '.hpp': 'cpp',
+  
+  // SQL/MySQL
+  '.sql': 'sql',
 };
 
 // Extension to Monaco language ID mapping
@@ -85,6 +88,7 @@ export const extensionToIcon: Record<string, string> = {
   '.c': '⚙️',
   '.h': '📋',
   '.hpp': '📋',
+  '.sql': '🗄️',
   '.html': '🌐',
   '.css': '🎨',
   '.json': '📦',

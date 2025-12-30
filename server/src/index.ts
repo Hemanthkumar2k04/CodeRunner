@@ -45,6 +45,9 @@ function getRunCommand(language: string, entryFile: string): string {
       const className = entryFile.split('/').pop()?.replace('.java', '') || entryFile.replace('.java', '');
       return `javac -d . $(find . -name "*.java") && java ${className}`;
     }
+    case 'sql': {
+      return `mysql -u root -proot -e "CREATE DATABASE IF NOT EXISTS testdb;" && mysql -u root -proot testdb < ${entryFile}`;
+    }
     default: throw new Error(`Unsupported language: ${language}`);
   }
 }
@@ -73,15 +76,26 @@ io.on('connection', (socket) => {
     // Find entry file
     const entryFile = files.find(f => f.toBeExec);
     console.log('[Server] Entry file:', entryFile?.path || entryFile?.name);
-    if (!entryFile && language !== 'cpp') {
+    if (!entryFile && language !== 'cpp' && language !== 'sql') {
        socket.emit('output', { type: 'stderr', data: 'Error: No entry file marked for execution.\n' });
        socket.emit('exit', 1);
        return;
     }
+    
+    // For SQL, use the first .sql file if no file is marked
+    let execFile = entryFile;
+    if (!execFile && language === 'sql') {
+      execFile = files.find(f => f.name.endsWith('.sql'));
+      if (!execFile) {
+        socket.emit('output', { type: 'stderr', data: 'Error: No SQL file found.\n' });
+        socket.emit('exit', 1);
+        return;
+      }
+    }
 
     let command = '';
     try {
-        command = getRunCommand(language, entryFile ? entryFile.path : '');
+        command = getRunCommand(language, execFile ? execFile.path : '');
         console.log('[Server] Command:', command);
     } catch (e: any) {
         socket.emit('output', { type: 'stderr', data: e.message + '\n' });
