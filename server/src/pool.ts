@@ -42,14 +42,37 @@ class ContainerPool {
     if (!runtimeConfig) return;
 
     try {
-      // Start a container that stays alive (tail -f /dev/null)
-      // Added --label to identify our containers for cleanup
-      const { stdout } = await execAsync(
-        `docker run -d --label type=coderunner-worker --network ${config.docker.network} --memory ${config.docker.memory} --cpus ${config.docker.cpus} ${runtimeConfig.image} tail -f /dev/null`
-      );
+      // Build docker run command with appropriate settings
+      // MySQL needs bridge network for its IPC, others can use none for security
+      const network = language === 'sql' ? 'bridge' : config.docker.network;
+      const memory = language === 'sql' ? '256m' : config.docker.memory;
+      
+      let dockerCmd = `docker run -d --label type=coderunner-worker --network ${network} --memory ${memory} --cpus ${config.docker.cpus}`;
+      
+      // MySQL needs special environment variables
+      if (language === 'sql') {
+        dockerCmd += ` -e MYSQL_ROOT_PASSWORD=root`;
+      }
+      
+      dockerCmd += ` ${runtimeConfig.image}`;
+      
+      // Add command to keep container alive (MySQL has its own entrypoint)
+      if (language !== 'sql') {
+        dockerCmd += ` tail -f /dev/null`;
+      }
+
+      const { stdout } = await execAsync(dockerCmd);
       
       const containerId = stdout.trim();
       this.pool[language].push(containerId);
+      console.log(`Created ${language} container: ${containerId}`);
+      
+      // For MySQL, wait longer for initialization
+      if (language === 'sql') {
+        console.log(`Waiting for MySQL to initialize...`);
+        await new Promise(resolve => setTimeout(resolve, 10000));
+        console.log(`MySQL container ready`);
+      }
     } catch (error) {
       console.error(`Failed to create ${language} container:`, error);
     }

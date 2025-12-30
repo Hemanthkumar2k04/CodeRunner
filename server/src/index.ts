@@ -46,7 +46,7 @@ function getRunCommand(language: string, entryFile: string): string {
       return `javac -d . $(find . -name "*.java") && java ${className}`;
     }
     case 'sql': {
-      return `mysql -u root -proot -e "CREATE DATABASE IF NOT EXISTS testdb;" && mysql -u root -proot testdb < ${entryFile}`;
+      return `MYSQL_PWD=root mysql -u root < ${entryFile}`;
     }
     default: throw new Error(`Unsupported language: ${language}`);
   }
