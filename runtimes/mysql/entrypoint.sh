@@ -14,8 +14,7 @@ if [ $# -gt 0 ]; then
   SQL_FILE="$1"
   if [ -f "$SQL_FILE" ]; then
     echo "Executing SQL file: $SQL_FILE"
-    mysql -u root -proot -e "CREATE DATABASE IF NOT EXISTS testdb;"
-    mysql -u root -proot testdb < "$SQL_FILE"
+    mysql -u root -proot < "$SQL_FILE"
   fi
 fi
 

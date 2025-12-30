@@ -5,7 +5,6 @@ RUN useradd -m runner
 
 # Set up MySQL to allow connections from the runner user
 ENV MYSQL_ROOT_PASSWORD=root
-ENV MYSQL_DATABASE=testdb
 
 # Expose MySQL port
 EXPOSE 3306
