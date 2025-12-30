@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useEditorStore, type FileNode } from '@/stores/useEditorStore';
 import type { EditorState } from '@/stores/useEditorStore';
 import { useSocket } from '@/hooks/useSocket';
@@ -23,7 +23,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import { FileIcon } from '@/components/FileIcon';
-import { Play, Loader2, AlertCircle } from 'lucide-react';
+import { Play, Loader2, AlertCircle, CheckCircle2, File, Database } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface DependencyResolverProps {
@@ -50,15 +50,21 @@ export function DependencyResolver({ open, onOpenChange }: DependencyResolverPro
   const allFiles = flattenTree(files, rootIds);
   
   // Filter to files matching the active file's language OR data files
-  const compatibleFiles = allFiles.filter((f) => {
-    // Always include data files
-    if (isDataFile(f.name)) {
-      return true;
-    }
-    // Include source files of the same language
-    const lang = getLanguageFromExtension(f.name);
-    return lang === activeLanguage;
-  });
+  const compatibleFiles = useMemo(() => {
+    return allFiles.filter((f) => {
+      // Always include data files
+      if (isDataFile(f.name)) {
+        return true;
+      }
+      // Include source files of the same language
+      const lang = getLanguageFromExtension(f.name);
+      return lang === activeLanguage;
+    });
+  }, [allFiles, activeLanguage]);
+
+  // Separate data files from source files
+  const dataFiles = useMemo(() => compatibleFiles.filter(f => isDataFile(f.name)), [compatibleFiles]);
+  const sourceFiles = useMemo(() => compatibleFiles.filter(f => !isDataFile(f.name)), [compatibleFiles]);
 
   // Initialize selection when dialog opens
   useEffect(() => {
@@ -80,7 +86,7 @@ export function DependencyResolver({ open, onOpenChange }: DependencyResolverPro
       });
       setLocalSelected(initial);
     }
-  }, [open, activeFileId, allFiles, selectedFilesForRun]);
+  }, [open, activeFileId, allFiles, selectedFilesForRun, activeLanguage]);
 
   const toggleFile = useCallback((fileId: string) => {
     // Don't allow deselecting the entry point (active file)
@@ -98,7 +104,8 @@ export function DependencyResolver({ open, onOpenChange }: DependencyResolverPro
   }, [activeFileId]);
 
   const selectAll = useCallback(() => {
-    setLocalSelected(new Set(compatibleFiles.map((f) => f.id)));
+    const ids = compatibleFiles.map((f) => f.id);
+    setLocalSelected(new Set(ids));
   }, [compatibleFiles]);
 
   const selectNone = useCallback(() => {
@@ -122,8 +129,6 @@ export function DependencyResolver({ open, onOpenChange }: DependencyResolverPro
         toBeExec: f.id === activeFileId,
       }));
 
-    console.log('[DependencyResolver] Files to run:', filesToRun);
-
     if (filesToRun.length === 0) {
       appendOutput({ type: 'stderr', data: 'Error: No files selected to run' });
       return;
@@ -131,7 +136,6 @@ export function DependencyResolver({ open, onOpenChange }: DependencyResolverPro
 
     // Ensure there's exactly one entry point
     const entryPointCount = filesToRun.filter((f) => f.toBeExec).length;
-    console.log('[DependencyResolver] Entry points:', entryPointCount);
     if (entryPointCount !== 1) {
       appendOutput({ type: 'stderr', data: 'Error: Entry point file not found' });
       return;
@@ -158,7 +162,7 @@ export function DependencyResolver({ open, onOpenChange }: DependencyResolverPro
   if (!activeFile || !activeLanguage) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Cannot Run Code</DialogTitle>
             <DialogDescription>
@@ -178,112 +182,196 @@ export function DependencyResolver({ open, onOpenChange }: DependencyResolverPro
     .filter((f): f is FileNode => f !== undefined)
     .reduce((sum, f) => sum + getFileSize(f.content), 0);
 
+  const selectedCount = localSelected.size;
+  const totalCount = compatibleFiles.length;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Select Files to Run</DialogTitle>
-          <DialogDescription>
-            Choose which files to include when running your code. The entry point
-            file is always included.
+          <DialogTitle className="text-xl">Select Files to Run</DialogTitle>
+          <DialogDescription className="text-base">
+            Choose which files to include when running your code. The entry point file is always included.
           </DialogDescription>
         </DialogHeader>
 
         {compatibleFiles.length === 0 ? (
-          <div className="py-8 text-center text-muted-foreground">
-            <AlertCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p>No compatible files found</p>
+          <div className="py-12 text-center space-y-4">
+            <div className="inline-flex p-4 rounded-xl bg-muted/30 border-2 border-dashed border-border">
+              <AlertCircle className="h-10 w-10 text-muted-foreground opacity-40" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium">No compatible files found</p>
+              <p className="text-xs text-muted-foreground">Create files with the same language to run them together</p>
+            </div>
           </div>
         ) : (
-          <>
-            {/* Quick actions */}
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">
-                {localSelected.size} of {compatibleFiles.length} files selected
-              </span>
+          <div className="space-y-4">
+            {/* Stats and Quick Actions */}
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 className="h-5 w-5 text-primary" />
+                <div className="text-sm">
+                  <span className="font-semibold">{selectedCount}</span>
+                  <span className="text-muted-foreground"> of </span>
+                  <span className="font-semibold">{totalCount}</span>
+                  <span className="text-muted-foreground"> files selected</span>
+                </div>
+              </div>
               <div className="flex gap-2">
-                <Button variant="ghost" size="sm" onClick={selectAll}>
+                <Button variant="outline" size="sm" onClick={selectAll} className="h-8">
                   Select All
                 </Button>
-                <Button variant="ghost" size="sm" onClick={selectNone}>
-                  Select None
+                <Button variant="outline" size="sm" onClick={selectNone} className="h-8">
+                  Clear
                 </Button>
               </div>
             </div>
 
-            {/* File list */}
-            <ScrollArea className="h-[300px] border rounded-md">
-              <div className="p-2 space-y-1">
-                {compatibleFiles.map((file) => {
-                  const isEntryPoint = file.id === activeFileId;
-                  const isSelected = localSelected.has(file.id);
-                  const fileSize = getFileSize(file.content);
-
-                  return (
-                    <div
-                      key={file.id}
-                      className={cn(
-                        'flex items-center gap-3 p-2 rounded-md transition-colors',
-                        'hover:bg-muted/50',
-                        isSelected && 'bg-muted'
-                      )}
-                    >
-                      <Checkbox
-                        id={file.id}
-                        checked={isSelected}
-                        disabled={isEntryPoint}
-                        onCheckedChange={() => toggleFile(file.id)}
-                      />
-                      <FileIcon filename={file.name} className="shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <label
-                          htmlFor={file.id}
-                          className={cn(
-                            'block truncate text-sm cursor-pointer',
-                            isEntryPoint && 'font-medium'
-                          )}
-                        >
-                          {file.path}
-                        </label>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {isEntryPoint && (
-                          <Badge variant="secondary" className="text-xs">
-                            Entry point
-                          </Badge>
-                        )}
-                        <span className="text-xs text-muted-foreground">
-                          {formatBytes(fileSize)}
-                        </span>
-                      </div>
+            {/* File Lists */}
+            <ScrollArea className="h-[400px] rounded-lg border">
+              <div className="p-3 space-y-4">
+                {/* Source Files Section */}
+                {sourceFiles.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 px-2 py-1">
+                      <File className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                        Source Files
+                      </span>
                     </div>
-                  );
-                })}
+                    <div className="space-y-1">
+                      {sourceFiles.map((file) => {
+                        const isEntryPoint = file.id === activeFileId;
+                        const isSelected = localSelected.has(file.id);
+                        const fileSize = getFileSize(file.content);
+
+                        return (
+                          <div
+                            key={file.id}
+                            className={cn(
+                              'flex items-center gap-3 p-3 rounded-md transition-all',
+                              'hover:bg-muted/50 border',
+                              isSelected ? 'bg-muted border-primary/20' : 'bg-background border-transparent'
+                            )}
+                          >
+                            <Checkbox
+                              id={file.id}
+                              checked={isSelected}
+                              disabled={isEntryPoint}
+                              onCheckedChange={() => toggleFile(file.id)}
+                              className="shrink-0"
+                            />
+                            <FileIcon filename={file.name} size={18} className="shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <label
+                                htmlFor={file.id}
+                                className={cn(
+                                  'block truncate text-sm cursor-pointer',
+                                  isEntryPoint && 'font-semibold'
+                                )}
+                              >
+                                {file.path}
+                              </label>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {isEntryPoint && (
+                                <Badge variant="default" className="text-xs font-medium">
+                                  Entry Point
+                                </Badge>
+                              )}
+                              <span className="text-xs text-muted-foreground font-mono">
+                                {formatBytes(fileSize)}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Data Files Section */}
+                {dataFiles.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 px-2 py-1">
+                      <Database className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                        Data Files
+                      </span>
+                      <Badge variant="secondary" className="text-xs">
+                        Auto-included
+                      </Badge>
+                    </div>
+                    <div className="space-y-1">
+                      {dataFiles.map((file) => {
+                        const isSelected = localSelected.has(file.id);
+                        const fileSize = getFileSize(file.content);
+
+                        return (
+                          <div
+                            key={file.id}
+                            className={cn(
+                              'flex items-center gap-3 p-3 rounded-md transition-all',
+                              'hover:bg-muted/50 border',
+                              isSelected ? 'bg-muted border-primary/20' : 'bg-background border-transparent'
+                            )}
+                          >
+                            <Checkbox
+                              id={file.id}
+                              checked={isSelected}
+                              onCheckedChange={() => toggleFile(file.id)}
+                              className="shrink-0"
+                            />
+                            <FileIcon filename={file.name} size={18} className="shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <label
+                                htmlFor={file.id}
+                                className="block truncate text-sm cursor-pointer"
+                              >
+                                {file.path}
+                              </label>
+                            </div>
+                            <span className="text-xs text-muted-foreground font-mono shrink-0">
+                              {formatBytes(fileSize)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </ScrollArea>
 
-            {/* Total size */}
-            <div className="text-sm text-muted-foreground text-right">
-              Total size: {formatBytes(totalSize)}
+            {/* Total Size Display */}
+            <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-muted/20 text-sm">
+              <span className="text-muted-foreground">Total size:</span>
+              <span className="font-mono font-semibold">{formatBytes(totalSize)}</span>
             </div>
-          </>
+          </div>
         )}
 
-        <DialogFooter>
+        <DialogFooter className="gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button
             onClick={handleRun}
             disabled={localSelected.size === 0 || isRunning}
-            className="gap-2"
+            className="gap-2 min-w-[120px]"
           >
             {isRunning ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Running...
+              </>
             ) : (
-              <Play className="h-4 w-4" />
+              <>
+                <Play className="h-4 w-4 fill-current" />
+                Run {activeLanguage}
+              </>
             )}
-            Run {activeLanguage}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -80,7 +80,6 @@ function FileTreeNode({ nodeId, depth, onContextAction, selectedNodeId, onSelect
   if (!node) return null;
 
   const handleClick = () => {
-    // Always select the clicked node
     onSelectNode(nodeId);
     
     if (node.isFolder) {
@@ -100,21 +99,21 @@ function FileTreeNode({ nodeId, depth, onContextAction, selectedNodeId, onSelect
         <ContextMenuTrigger>
           <div
             className={cn(
-              'group flex items-center gap-1 text-sm cursor-pointer py-1 px-2 rounded-md transition-colors',
-              'hover:bg-sidebar-accent',
+              'group flex items-center gap-2 text-sm cursor-pointer py-1.5 px-2 rounded-md transition-all',
+              'hover:bg-sidebar-accent/70',
               selectedNodeId === node.id
-                ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                : !selectedNodeId && isActive && !node.isFolder && 'bg-sidebar-accent text-sidebar-accent-foreground'
+                ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm'
+                : !selectedNodeId && isActive && !node.isFolder && 'bg-sidebar-accent/50 text-sidebar-accent-foreground'
             )}
-            style={{ paddingLeft: `${depth * 12 + 8}px` }}
+            style={{ paddingLeft: `${depth * 16 + 8}px` }}
             onClick={handleClick}
           >
             {node.isFolder ? (
               <>
                 {isExpanded ? (
-                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform" />
                 ) : (
-                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform" />
                 )}
                 <FileIcon 
                   filename={node.name} 
@@ -125,19 +124,19 @@ function FileTreeNode({ nodeId, depth, onContextAction, selectedNodeId, onSelect
               </>
             ) : (
               <>
-                <span className="w-4" /> {/* Spacer for alignment */}
+                <span className="w-4 shrink-0" />
                 <FileIcon filename={node.name} className="shrink-0" />
               </>
             )}
-            <span className="truncate flex-1">{node.name}</span>
+            <span className="truncate flex-1 font-medium">{node.name}</span>
             {node.isModified && !node.isFolder && (
-              <span className="text-xs text-orange-400">●</span>
+              <span className="text-xs text-orange-400 font-bold">●</span>
             )}
             {!node.isFolder && (
               <ContextMenu>
                 <ContextMenuTrigger asChild>
                   <button
-                    className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-muted-foreground/20 transition-opacity"
+                    className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-sidebar-accent transition-opacity"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <MoreVertical className="h-3.5 w-3.5" />
@@ -237,10 +236,9 @@ export function Workspace() {
   } | null>(null);
 
   const getParentIdForNewItem = useCallback(() => {
-    if (!selectedNodeId) return null; // Create at root
+    if (!selectedNodeId) return null;
     const selectedNode = files[selectedNodeId];
     if (!selectedNode) return null;
-    // If selected is a folder, create inside it; if file, create in its parent
     return selectedNode.isFolder ? selectedNodeId : selectedNode.parentId || null;
   }, [selectedNodeId, files]);
 
@@ -274,12 +272,13 @@ export function Workspace() {
         case 'rename':
           openDialog('rename', null, nodeId);
           break;
-        case 'delete':
+        case 'delete': {
           const node = files[nodeId];
           if (node) {
             setDeleteConfirm({ id: nodeId, name: node.name, isFolder });
           }
           break;
+        }
       }
     },
     [files, openDialog]
@@ -362,11 +361,13 @@ export function Workspace() {
   return (
     <TooltipProvider>
       <div className="h-full w-full bg-sidebar flex flex-col border-r overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-sidebar-border shrink-0">
-          <div className="flex items-center gap-2 text-sm font-semibold text-sidebar-foreground">
-            <Folder className="h-4 w-4" />
-            <span>Explorer</span>
+        {/* Header - Redesigned */}
+        <div className="flex items-center justify-between px-4 py-4 border-b border-sidebar-border shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-sidebar-accent/50">
+              <Folder className="h-4 w-4 text-sidebar-foreground" />
+            </div>
+            <span className="text-sm font-semibold text-sidebar-foreground">Explorer</span>
           </div>
           <div className="flex items-center gap-1">
             <Tooltip>
@@ -374,7 +375,7 @@ export function Workspace() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7"
+                  className="h-8 w-8 hover:bg-sidebar-accent"
                   onClick={() => openDialog('newFile', getParentIdForNewItem())}
                 >
                   <FilePlus className="h-4 w-4" />
@@ -387,7 +388,7 @@ export function Workspace() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7"
+                  className="h-8 w-8 hover:bg-sidebar-accent"
                   onClick={() => openDialog('newFolder', getParentIdForNewItem())}
                 >
                   <FolderPlus className="h-4 w-4" />
@@ -400,14 +401,18 @@ export function Workspace() {
 
         {/* File Tree */}
         <ScrollArea className="flex-1">
-          <div className="py-2">
+          <div className="py-3 px-2">
             {sortedRootIds.length === 0 ? (
-              <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-                <FileCode className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p>No files yet</p>
-                <p className="text-xs mt-1">
-                  Click the buttons above to create a file or folder
-                </p>
+              <div className="px-3 py-12 text-center space-y-4">
+                <div className="inline-flex p-4 rounded-xl bg-sidebar-accent/30 border-2 border-dashed border-sidebar-border">
+                  <FileCode className="h-10 w-10 text-muted-foreground opacity-40" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-sidebar-foreground">No files yet</p>
+                  <p className="text-xs text-muted-foreground">
+                    Click the buttons above to create files
+                  </p>
+                </div>
               </div>
             ) : (
               sortedRootIds.map((nodeId) => (
