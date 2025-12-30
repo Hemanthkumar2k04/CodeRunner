@@ -1,17 +1,18 @@
 import { useState, useCallback } from 'react';
 import {
   Folder,
-  FolderOpen,
-  FileCode,
   FilePlus,
   FolderPlus,
   ChevronRight,
   ChevronDown,
   Trash2,
   Pencil,
+  MoreVertical,
+  FileCode,
 } from 'lucide-react';
 import { useEditorStore } from '@/stores/useEditorStore';
-import { sortFileNodes, getFileIcon } from '@/lib/file-utils';
+import { sortFileNodes } from '@/lib/file-utils';
+import { FileIcon } from '@/components/FileIcon';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -86,7 +87,6 @@ function FileTreeNode({ nodeId, depth, onContextAction }: FileTreeNodeProps) {
 
   const isActive = activeFileId === node.id;
   const sortedChildren = sortFileNodes(node.children, files);
-  const iconEmoji = !node.isFolder ? getFileIcon(node.name) : null;
 
   return (
     <div>
@@ -94,7 +94,7 @@ function FileTreeNode({ nodeId, depth, onContextAction }: FileTreeNodeProps) {
         <ContextMenuTrigger>
           <div
             className={cn(
-              'flex items-center gap-1 text-sm cursor-pointer py-1 px-2 rounded-md transition-colors',
+              'group flex items-center gap-1 text-sm cursor-pointer py-1 px-2 rounded-md transition-colors',
               'hover:bg-sidebar-accent',
               isActive && !node.isFolder && 'bg-sidebar-accent text-sidebar-accent-foreground'
             )}
@@ -108,25 +108,49 @@ function FileTreeNode({ nodeId, depth, onContextAction }: FileTreeNodeProps) {
                 ) : (
                   <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                 )}
-                {isExpanded ? (
-                  <FolderOpen className="h-4 w-4 shrink-0 text-yellow-500" />
-                ) : (
-                  <Folder className="h-4 w-4 shrink-0 text-yellow-500" />
-                )}
+                <FileIcon 
+                  filename={node.name} 
+                  isFolder 
+                  isOpen={isExpanded} 
+                  className="shrink-0" 
+                />
               </>
             ) : (
               <>
                 <span className="w-4" /> {/* Spacer for alignment */}
-                {iconEmoji ? (
-                  <span className="text-sm shrink-0">{iconEmoji}</span>
-                ) : (
-                  <FileCode className="h-4 w-4 shrink-0 text-blue-400" />
-                )}
+                <FileIcon filename={node.name} className="shrink-0" />
               </>
             )}
-            <span className="truncate">{node.name}</span>
+            <span className="truncate flex-1">{node.name}</span>
             {node.isModified && !node.isFolder && (
-              <span className="ml-auto text-xs text-orange-400">●</span>
+              <span className="text-xs text-orange-400">●</span>
+            )}
+            {!node.isFolder && (
+              <ContextMenu>
+                <ContextMenuTrigger asChild>
+                  <button
+                    className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-muted-foreground/20 transition-opacity"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MoreVertical className="h-3.5 w-3.5" />
+                  </button>
+                </ContextMenuTrigger>
+                <ContextMenuContent>
+                  <ContextMenuItem
+                    onClick={() => onContextAction('rename', node.id, false)}
+                  >
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Rename
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    className="text-destructive"
+                    onClick={() => onContextAction('delete', node.id, false)}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              </ContextMenu>
             )}
           </div>
         </ContextMenuTrigger>

@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "postinstall": "mkdir -p public/icons && cd node_modules/vscode-icons-ts/build/icons && cp default_file.svg default_folder.svg default_folder_opened.svg default_root_folder.svg default_root_folder_opened.svg file_type_python.svg file_type_java.svg file_type_c.svg file_type_c2.svg file_type_c3.svg file_type_cheader.svg file_type_cpp.svg file_type_cpp2.svg file_type_cpp3.svg file_type_cppheader.svg file_type_js.svg file_type_js_official.svg file_type_typescript.svg file_type_typescript_official.svg file_type_typescriptdef.svg file_type_typescriptdef_official.svg file_type_rust.svg file_type_go.svg file_type_go_gopher.svg ../../../../public/icons/"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
@@ -32,6 +33,7 @@
     "socket.io-client": "^4.8.3",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.1.18",
+    "vscode-icons-ts": "^0.1.2",
     "zustand": "^5.0.9"
   },
   "devDependencies": {

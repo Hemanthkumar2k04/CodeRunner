@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# VS Code icons (copied from node_modules)
+public/icons
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

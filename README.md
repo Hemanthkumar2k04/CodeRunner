@@ -33,6 +33,36 @@ The server hosts a full-featured web-based code editor with a file explorer, Mon
    cd CodeRunner
    ```
 
+## Method - 1: Setup using automated script
+
+2. **Run the setup script:**
+
+   ```bash
+   ./setup.sh
+   ```
+
+   This script will build the Docker images and setup both frontend and backend.
+
+3. **Run Backend and Frontend:**
+
+   Open two terminal windows/tabs.
+
+   **Terminal 1 (Backend):**
+
+   ```bash
+   cd server
+   npm run dev
+   ```
+
+   **Terminal 2 (Frontend):**
+
+   ```bash
+   cd client
+   npm run dev
+   ```
+
+## Method - 2: Manual Setup
+
 2. **Build Docker runtime images:**
 
    ```bash

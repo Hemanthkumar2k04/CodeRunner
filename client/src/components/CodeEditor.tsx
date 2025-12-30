@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
 import Editor from '@monaco-editor/react';
 import { useTheme } from './theme-provider';
 import { useEditorStore } from '@/stores/useEditorStore';
@@ -11,9 +11,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-
+import { FileIcon } from '@/components/FileIcon';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import { X, Play, FileCode, Loader2 } from 'lucide-react';
+import { X, Play, Loader2, Code2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface CodeEditorProps {
@@ -80,7 +80,7 @@ export function CodeEditor({ onRunClick }: CodeEditorProps) {
   if (openTabs.length === 0) {
     return (
       <div className="h-full w-full bg-background flex flex-col items-center justify-center text-muted-foreground">
-        <FileCode className="h-16 w-16 mb-4 opacity-30" />
+        <Code2 className="h-16 w-16 mb-4 opacity-30" />
         <h2 className="text-xl font-medium mb-2">No file open</h2>
         <p className="text-sm">Create a new file to start coding</p>
         <p className="text-xs mt-2 opacity-70">
@@ -113,6 +113,7 @@ export function CodeEditor({ onRunClick }: CodeEditorProps) {
                     )}
                     onClick={() => handleTabClick(tabId)}
                   >
+                    <FileIcon filename={file.name} size={14} className="shrink-0" />
                     <span className="truncate text-sm max-w-[120px]">{file.name}</span>
                     {file.isModified && (
                       <span className="text-orange-400 text-xs">●</span>

@@ -20,7 +20,8 @@ import {
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
-import { FileCode, Play, Loader2, AlertCircle } from 'lucide-react';
+import { FileIcon } from '@/components/FileIcon';
+import { Play, Loader2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface DependencyResolverProps {
@@ -219,7 +220,7 @@ export function DependencyResolver({ open, onOpenChange }: DependencyResolverPro
                         disabled={isEntryPoint}
                         onCheckedChange={() => toggleFile(file.id)}
                       />
-                      <FileCode className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <FileIcon filename={file.name} className="shrink-0" />
                       <div className="flex-1 min-w-0">
                         <label
                           htmlFor={file.id}
