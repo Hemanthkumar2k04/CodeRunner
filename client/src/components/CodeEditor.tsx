@@ -164,7 +164,7 @@ export function CodeEditor({ onRunClick }: CodeEditorProps) {
           </ScrollArea>
 
           {/* Info and Controls Section */}
-          <div className="flex items-center gap-3 px-4 border-l bg-muted/10">
+          <div className="flex items-center gap-3 px-4 border-l bg-muted/10 ml-auto">
             {activeFile && (
               <>
                 <div className="flex items-center gap-2">

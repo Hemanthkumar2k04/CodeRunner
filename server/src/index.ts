@@ -46,7 +46,7 @@ function getRunCommand(language: string, entryFile: string): string {
       return `javac -d . $(find . -name "*.java") && java ${className}`;
     }
     case 'sql': {
-      return `mysql -u root -proot < ${entryFile}`;
+      return `MYSQL_PWD=root mysql -u root < ${entryFile}`;
     }
     default: throw new Error(`Unsupported language: ${language}`);
   }
