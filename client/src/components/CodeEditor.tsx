@@ -11,16 +11,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { X, Play, FileCode, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -40,42 +31,30 @@ export function CodeEditor({ onRunClick }: CodeEditorProps) {
   const updateContent = useEditorStore((state) => state.updateContent);
   const markAsSaved = useEditorStore((state) => state.markAsSaved);
 
-  const [closeConfirm, setCloseConfirm] = useState<string | null>(null);
-
   const activeFile = activeFileId ? files[activeFileId] : null;
   const language = activeFile ? getMonacoLanguage(activeFile.name) : 'plaintext';
   const execLanguage = activeFile ? getLanguageFromExtension(activeFile.name) : null;
 
   const handleTabClick = useCallback((tabId: string) => {
-    setActiveFile(tabId);
-  }, [setActiveFile]);
+      setActiveFile(tabId);
+    }, [setActiveFile]);
 
   const handleTabClose = useCallback((tabId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const file = files[tabId];
-    if (file?.isModified) {
-      setCloseConfirm(tabId);
-    } else {
+      e.stopPropagation();
       closeTab(tabId);
-    }
-  }, [files, closeTab]);
-
-  const handleConfirmClose = useCallback(() => {
-    if (closeConfirm) {
-      closeTab(closeConfirm);
-      setCloseConfirm(null);
-    }
-  }, [closeConfirm, closeTab]);
+    },
+    [closeTab]
+  );
 
   const handleEditorChange = useCallback((value: string | undefined) => {
-    if (activeFileId && value !== undefined) {
-      const result = updateContent(activeFileId, value);
-      if (!result.success) {
-        // Could show a toast here for size limit errors
-        console.warn(result.error);
+      if (activeFileId && value !== undefined) {
+        const result = updateContent(activeFileId, value);
+        if (!result.success) {
+          // Could show a toast here for size limit errors
+          console.warn(result.error);
+        }
       }
-    }
-  }, [activeFileId, updateContent]);
+    }, [activeFileId, updateContent]);
 
   const handleSave = useCallback(() => {
     if (activeFileId) {
@@ -85,17 +64,17 @@ export function CodeEditor({ onRunClick }: CodeEditorProps) {
 
   // Handle keyboard shortcuts
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-      e.preventDefault();
-      handleSave();
-    }
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-      e.preventDefault();
-      if (activeFile && execLanguage && !isRunning) {
-        onRunClick();
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        handleSave();
       }
-    }
-  }, [handleSave, activeFile, execLanguage, isRunning, onRunClick]);
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        if (activeFile && execLanguage && !isRunning) {
+          onRunClick();
+        }
+      }
+    }, [handleSave, activeFile, execLanguage, isRunning, onRunClick]);
 
   // Empty state when no file is open
   if (openTabs.length === 0) {
@@ -215,28 +194,6 @@ export function CodeEditor({ onRunClick }: CodeEditorProps) {
             }}
           />
         </div>
-
-        {/* Close unsaved file confirmation */}
-        <AlertDialog
-          open={closeConfirm !== null}
-          onOpenChange={(open) => !open && setCloseConfirm(null)}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Unsaved changes</AlertDialogTitle>
-              <AlertDialogDescription>
-                This file has unsaved changes. Are you sure you want to close it?
-                Your changes will be lost.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleConfirmClose}>
-                Close anyway
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </div>
     </TooltipProvider>
   );
