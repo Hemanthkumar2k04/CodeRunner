@@ -28,24 +28,46 @@ export function Navbar() {
         </Alert>
       )}
 
-      {/* Navbar */}
-      <nav className="border-b bg-background">
-        <div className="flex h-14 items-center px-4 container mx-auto">
-          <a href="https://fabric-eec.vercel.app" target="_blank" rel="noreferrer" className="mr-4 hover:opacity-80 transition-opacity">
-            <img src={fabricLogo} alt="Club Logo" className="h-8 w-auto" />
+      {/* Navbar - Redesigned */}
+      <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="flex h-16 items-center px-6 gap-6">
+          {/* Logo Section */}
+          <a 
+            href="https://fabric-eec.vercel.app" 
+            target="_blank" 
+            rel="noreferrer" 
+            className="flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-accent/50 transition-all duration-200 group"
+          >
+            <img 
+              src={fabricLogo} 
+              alt="Fabric Logo" 
+              className="h-9 w-auto group-hover:scale-105 transition-transform" 
+            />
+            <div className="h-8 w-px bg-border" />
           </a>
-          <div className="flex items-center gap-2 font-bold text-xl mr-auto">
-            <Code2 className="h-6 w-6" />
-            <span>CodeRunner</span>
+
+          {/* Brand Section */}
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <Code2 className="h-5 w-5 text-primary" />
+            </div>
+            <div className="flex flex-col">
+              <span className="font-bold text-lg leading-none">CodeRunner</span>
+              <span className="text-xs text-muted-foreground">Web IDE</span>
+            </div>
           </div>
 
+          {/* Spacer */}
+          <div className="flex-1" />
+
+          {/* Theme Toggle */}
           <button
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground h-10 w-10"
+            className="inline-flex items-center justify-center rounded-lg text-sm font-medium transition-all hover:bg-accent hover:text-accent-foreground h-10 w-10 hover:scale-105 active:scale-95"
             aria-label="Toggle theme"
           >
-            <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-            <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+            <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+            <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
           </button>
         </div>
       </nav>

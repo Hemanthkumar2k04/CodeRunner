@@ -22,7 +22,7 @@ export interface OutputEntry {
   timestamp: number;
 }
 
-interface EditorState {
+export interface EditorState {
   // File system
   files: Record<string, FileNode>;
   rootIds: string[]; // Top-level file/folder IDs

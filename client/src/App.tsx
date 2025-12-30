@@ -7,13 +7,14 @@ import { CodeEditor } from './components/CodeEditor';
 import { Console } from './components/Console';
 import { useSocket } from './hooks/useSocket';
 import { useEditorStore } from './stores/useEditorStore';
+import type { EditorState } from './stores/useEditorStore';
 import { getLanguageFromExtension, flattenTree, isLanguageSupported, isDataFile } from './lib/file-utils';
 
 function AppContent() {
   const { runCode, disconnect } = useSocket();
-  const files = useEditorStore((state) => state.files);
-  const rootIds = useEditorStore((state) => state.rootIds);
-  const activeFileId = useEditorStore((state) => state.activeFileId);
+  const files = useEditorStore((state: EditorState) => state.files);
+  const rootIds = useEditorStore((state: EditorState) => state.rootIds);
+  const activeFileId = useEditorStore((state: EditorState) => state.activeFileId);
 
   // Panel sizing state
   const [sidebarWidth, setSidebarWidth] = useState(250);
@@ -69,12 +70,12 @@ function AppContent() {
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (isResizingSidebar) {
-        const newWidth = Math.max(150, Math.min(400, e.clientX));
+        const newWidth = Math.max(200, Math.min(500, e.clientX));
         setSidebarWidth(newWidth);
       }
       if (isResizingConsole && containerRef.current) {
         const containerRect = containerRef.current.getBoundingClientRect();
-        const newHeight = Math.max(100, Math.min(500, containerRect.bottom - e.clientY));
+        const newHeight = Math.max(150, Math.min(600, containerRect.bottom - e.clientY));
         setConsoleHeight(newHeight);
       }
     };
@@ -112,11 +113,27 @@ function AppContent() {
           <Workspace />
         </div>
 
-        {/* Sidebar Resize Handle */}
+        {/* Sidebar Resize Handle - Enhanced */}
         <div
-          className="w-1 h-full bg-border hover:bg-primary cursor-col-resize flex-shrink-0 transition-colors"
+          className={`group relative w-1 h-full flex-shrink-0 transition-all cursor-col-resize hover:w-1.5 ${
+            isResizingSidebar 
+              ? 'bg-primary w-1.5' 
+              : 'bg-border hover:bg-primary/60'
+          }`}
           onMouseDown={() => setIsResizingSidebar(true)}
-        />
+        >
+          {/* Visual indicator on hover */}
+          <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="h-full w-full bg-primary/20" />
+          </div>
+          {/* Center grip indicator */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="flex flex-col gap-1 p-1 rounded bg-primary/10">
+              <div className="w-0.5 h-3 bg-primary/60 rounded-full" />
+              <div className="w-0.5 h-3 bg-primary/60 rounded-full" />
+            </div>
+          </div>
+        </div>
 
         {/* Right side: Editor + Console */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -125,11 +142,27 @@ function AppContent() {
             <CodeEditor onRunClick={handleRunClick} />
           </div>
 
-          {/* Console Resize Handle */}
+          {/* Console Resize Handle - Enhanced */}
           <div
-            className="h-1 w-full bg-border hover:bg-primary cursor-row-resize flex-shrink-0 transition-colors"
+            className={`group relative h-1 w-full flex-shrink-0 transition-all cursor-row-resize hover:h-1.5 ${
+              isResizingConsole 
+                ? 'bg-primary h-1.5' 
+                : 'bg-border hover:bg-primary/60'
+            }`}
             onMouseDown={() => setIsResizingConsole(true)}
-          />
+          >
+            {/* Visual indicator on hover */}
+            <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="h-full w-full bg-primary/20" />
+            </div>
+            {/* Center grip indicator */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="flex gap-1 p-1 rounded bg-primary/10">
+                <div className="w-3 h-0.5 bg-primary/60 rounded-full" />
+                <div className="w-3 h-0.5 bg-primary/60 rounded-full" />
+              </div>
+            </div>
+          </div>
 
           {/* Console */}
           <div 

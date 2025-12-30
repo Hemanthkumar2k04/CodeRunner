@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import Editor, { type Monaco } from '@monaco-editor/react';
 import { useTheme } from './theme-provider';
 import { useEditorStore } from '@/stores/useEditorStore';
+import type { EditorState } from '@/stores/useEditorStore';
 import { getMonacoLanguage, getLanguageFromExtension, formatBytes, getFileSize } from '@/lib/file-utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,7 +14,7 @@ import {
 } from '@/components/ui/tooltip';
 import { FileIcon } from '@/components/FileIcon';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import { X, Play, Loader2, Code2 } from 'lucide-react';
+import { X, Play, Loader2, Code2, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface CodeEditorProps {
@@ -22,14 +23,14 @@ interface CodeEditorProps {
 
 export function CodeEditor({ onRunClick }: CodeEditorProps) {
   const { theme } = useTheme();
-  const files = useEditorStore((state) => state.files);
-  const activeFileId = useEditorStore((state) => state.activeFileId);
-  const openTabs = useEditorStore((state) => state.openTabs);
-  const isRunning = useEditorStore((state) => state.isRunning);
-  const setActiveFile = useEditorStore((state) => state.setActiveFile);
-  const closeTab = useEditorStore((state) => state.closeTab);
-  const updateContent = useEditorStore((state) => state.updateContent);
-  const markAsSaved = useEditorStore((state) => state.markAsSaved);
+  const files = useEditorStore((state: EditorState) => state.files);
+  const activeFileId = useEditorStore((state: EditorState) => state.activeFileId);
+  const openTabs = useEditorStore((state: EditorState) => state.openTabs);
+  const isRunning = useEditorStore((state: EditorState) => state.isRunning);
+  const setActiveFile = useEditorStore((state: EditorState) => state.setActiveFile);
+  const closeTab = useEditorStore((state: EditorState) => state.closeTab);
+  const updateContent = useEditorStore((state: EditorState) => state.updateContent);
+  const markAsSaved = useEditorStore((state: EditorState) => state.markAsSaved);
 
   const activeFile = activeFileId ? files[activeFileId] : null;
   const language = activeFile ? getMonacoLanguage(activeFile.name) : 'plaintext';
@@ -61,7 +62,6 @@ export function CodeEditor({ onRunClick }: CodeEditorProps) {
       if (activeFileId && value !== undefined) {
         const result = updateContent(activeFileId, value);
         if (!result.success) {
-          // Could show a toast here for size limit errors
           console.warn(result.error);
         }
       }
@@ -73,7 +73,6 @@ export function CodeEditor({ onRunClick }: CodeEditorProps) {
     }
   }, [activeFileId, markAsSaved]);
 
-  // Handle keyboard shortcuts
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
@@ -90,13 +89,20 @@ export function CodeEditor({ onRunClick }: CodeEditorProps) {
   // Empty state when no file is open
   if (openTabs.length === 0) {
     return (
-      <div className="h-full w-full bg-background flex flex-col items-center justify-center text-muted-foreground">
-        <Code2 className="h-16 w-16 mb-4 opacity-30" />
-        <h2 className="text-xl font-medium mb-2">No file open</h2>
-        <p className="text-sm">Create a new file to start coding</p>
-        <p className="text-xs mt-2 opacity-70">
-          Use the Explorer panel on the left to create files
-        </p>
+      <div className="h-full w-full bg-background flex flex-col items-center justify-center text-muted-foreground p-8">
+        <div className="max-w-md text-center space-y-6">
+          <div className="inline-flex p-6 rounded-2xl bg-muted/30 border-2 border-dashed border-border">
+            <Code2 className="h-16 w-16 opacity-30" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-semibold text-foreground">No file open</h2>
+            <p className="text-base">Create a new file to start coding</p>
+          </div>
+          <div className="flex items-center gap-2 text-sm opacity-70 justify-center">
+            <Info className="h-4 w-4" />
+            <span>Use the Explorer panel on the left to create files</span>
+          </div>
+        </div>
       </div>
     );
   }
@@ -104,11 +110,12 @@ export function CodeEditor({ onRunClick }: CodeEditorProps) {
   return (
     <TooltipProvider>
       <div className="h-full w-full bg-background flex flex-col overflow-hidden" onKeyDown={handleKeyDown}>
-        {/* Tab bar */}
-        <div className="flex items-center border-b bg-muted/30 shrink-0">
-          <ScrollArea className="flex-1">
-            <div className="flex">
-              {openTabs.map((tabId) => {
+        {/* Tab bar - Redesigned */}
+        <div className="flex items-stretch border-b bg-muted/20 shrink-0">
+          {/* Tabs Section */}
+          <ScrollArea className="flex-1 max-w-4xl">
+            <div className="flex items-stretch h-12">
+              {openTabs.map((tabId: string) => {
                 const file = files[tabId];
                 if (!file) return null;
                 const isActive = tabId === activeFileId;
@@ -116,28 +123,38 @@ export function CodeEditor({ onRunClick }: CodeEditorProps) {
                   <div
                     key={tabId}
                     className={cn(
-                      'group flex items-center gap-2 px-3 py-2 border-r cursor-pointer transition-colors min-w-0',
-                      'hover:bg-muted/50',
+                      'group relative flex items-center gap-2.5 px-4 border-r cursor-pointer transition-all min-w-0',
+                      'hover:bg-muted/60',
                       isActive
-                        ? 'bg-background border-b-2 border-b-primary'
-                        : 'bg-muted/20'
+                        ? 'bg-background shadow-sm'
+                        : 'bg-transparent'
                     )}
                     onClick={() => handleTabClick(tabId)}
                   >
-                    <FileIcon filename={file.name} size={14} className="shrink-0" />
-                    <span className="truncate text-sm max-w-[120px]">{file.name}</span>
+                    {/* Active indicator */}
+                    {isActive && (
+                      <div className="absolute inset-x-0 top-0 h-0.5 bg-primary" />
+                    )}
+                    
+                    <FileIcon filename={file.name} size={16} className="shrink-0" />
+                    <span className={cn(
+                      "truncate text-sm max-w-[140px]",
+                      isActive ? "font-medium" : "font-normal"
+                    )}>
+                      {file.name}
+                    </span>
                     {file.isModified && (
-                      <span className="text-orange-400 text-xs">●</span>
+                      <span className="text-orange-400 text-base leading-none">●</span>
                     )}
                     <button
                       className={cn(
-                        'ml-1 p-0.5 rounded hover:bg-muted-foreground/20',
-                        'opacity-0 group-hover:opacity-100 transition-opacity',
-                        isActive && 'opacity-100'
+                        'ml-auto p-1 rounded-md hover:bg-muted-foreground/20 transition-opacity',
+                        'opacity-0 group-hover:opacity-100',
+                        isActive && 'opacity-70 hover:opacity-100'
                       )}
                       onClick={(e) => handleTabClose(tabId, e)}
                     >
-                      <X className="h-3 w-3" />
+                      <X className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 );
@@ -146,32 +163,39 @@ export function CodeEditor({ onRunClick }: CodeEditorProps) {
             <ScrollBar orientation="horizontal" />
           </ScrollArea>
 
-          {/* Run button and info */}
-          <div className="flex items-center gap-2 px-3 border-l">
+          {/* Info and Controls Section */}
+          <div className="flex items-center gap-3 px-4 border-l bg-muted/10">
             {activeFile && (
               <>
-                <Badge variant="outline" className="text-xs">
-                  {language}
-                </Badge>
-                <span className="text-xs text-muted-foreground">
-                  {formatBytes(getFileSize(activeFile.content))}
-                </span>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="text-xs font-medium px-2 py-0.5">
+                    {language}
+                  </Badge>
+                  <div className="h-4 w-px bg-border" />
+                  <span className="text-xs text-muted-foreground font-mono">
+                    {formatBytes(getFileSize(activeFile.content))}
+                  </span>
+                </div>
+                <div className="h-4 w-px bg-border" />
               </>
             )}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   size="sm"
-                  className="gap-1"
+                  className={cn(
+                    "gap-2 h-8 px-4",
+                    isRunning && "animate-pulse"
+                  )}
                   onClick={onRunClick}
                   disabled={!activeFile || !execLanguage || isRunning}
                 >
                   {isRunning ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    <Play className="h-4 w-4" />
+                    <Play className="h-4 w-4 fill-current" />
                   )}
-                  Run
+                  <span className="font-medium">Run</span>
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
