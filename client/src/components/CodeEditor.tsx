@@ -41,7 +41,7 @@ export function CodeEditor({ onRunClick }: CodeEditorProps) {
     // This fixes issues with language support like Java syntax highlighting
     const languages = ['java', 'python', 'javascript', 'cpp', 'c'];
     languages.forEach((lang) => {
-      if (!monaco.languages.getLanguages().find((l) => l.id === lang)) {
+      if (!monaco.languages.getLanguages().find((l: { id: string }) => l.id === lang)) {
         monaco.languages.register({ id: lang });
       }
     });
