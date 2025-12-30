@@ -160,6 +160,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](docs/contributing.md) for
 
 - Hemanthkumar K - [GitHub](https://github.com/hemanthkumar2k04)
 - Gowsi S M - [GitHub](https://github.com/gowsism)
+- Iniyaa P - [GitHub](https://github.com/Iniyaa21)
 
 ## 📄 License
 
