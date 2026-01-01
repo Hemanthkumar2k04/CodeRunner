@@ -1,3 +1,4 @@
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import './App.css';
 import { ThemeProvider } from './components/theme-provider';
@@ -5,6 +6,7 @@ import { Navbar } from './components/Navbar';
 import { Workspace } from './components/Workspace';
 import { CodeEditor } from './components/CodeEditor';
 import { Console } from './components/Console';
+import { AdminPage } from './components/AdminPage';
 import { useSocket } from './hooks/useSocket';
 import { useEditorStore } from './stores/useEditorStore';
 import type { EditorState } from './stores/useEditorStore';
@@ -192,9 +194,17 @@ function AppContent() {
 
 function App() {
   return (
-    <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-      <AppContent />
-    </ThemeProvider>
+    <Router>
+      <Routes>
+        <Route path="/admin" element={<AdminPage />} />
+        <Route path="/" element={
+          <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+            <AppContent />
+          </ThemeProvider>
+        } />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Router>
   );
 }
 

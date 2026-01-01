@@ -19,9 +19,90 @@ const io = new Server(httpServer, {
 
 const PORT = config.server.port;
 
+// Admin authentication
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123'; // Change this in production!
+const adminSessions = new Map<string, { expiresAt: number }>();
+
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Admin authentication middleware
+function authenticateAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const token = req.headers.authorization?.replace('Bearer ', '') || req.query.token as string;
+  
+  if (!token || !adminSessions.has(token)) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  
+  const session = adminSessions.get(token)!;
+  if (session.expiresAt < Date.now()) {
+    adminSessions.delete(token);
+    return res.status(401).json({ error: 'Session expired' });
+  }
+  
+  next();
+}
+
+export interface File {
+  name: string;
+  path: string;
+  content: string;
+  toBeExec?: boolean;
+}
+
+export interface RunResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}
+
+// --- Admin API Endpoints ---
+app.post('/api/admin/login', (req, res) => {
+  const { password } = req.body;
+  
+  if (!password || password !== ADMIN_PASSWORD) {
+    return res.status(401).json({ error: 'Invalid password' });
+  }
+  
+  const token = Math.random().toString(36).substring(2) + Date.now().toString(36);
+  const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+  adminSessions.set(token, { expiresAt });
+  
+  res.json({ token, expiresAt });
+});
+
+app.get('/api/admin/status', authenticateAdmin, async (req, res) => {
+  try {
+    // Get running containers info
+    const { stdout } = await new Promise<{ stdout: string }>((resolve, reject) => {
+      exec('docker ps --filter label=type=coderunner-worker --format "{{.ID}}|{{.Image}}|{{.Status}}"', (err, stdout) => {
+        if (err) reject(err);
+        else resolve({ stdout });
+      });
+    });
+
+    const containers = stdout
+      .trim()
+      .split('\n')
+      .filter(line => line.length > 0)
+      .map(line => {
+        const [id, image, status] = line.split('|');
+        return { id, image, status };
+      });
+
+    // Get number of connected clients
+    const connectedClients = io.engine.clientsCount;
+
+    res.json({
+      containers,
+      connectedClients,
+      timestamp: Date.now()
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 export interface File {
   name: string;

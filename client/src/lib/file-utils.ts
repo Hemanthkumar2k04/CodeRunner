@@ -231,5 +231,7 @@ export function getDefaultEntryPoint(language: SupportedLanguage): string {
       return 'Main.java';
     case 'cpp':
       return 'main.cpp';
+    case 'sql':
+      return 'queries.sql';
   }
 }
