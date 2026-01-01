@@ -7,12 +7,14 @@ const execAsync = promisify(exec);
 class ContainerPool {
   private pool: Record<string, string[]> = {};
   private maxSize: number;
+  private pendingCreations: Record<string, Promise<string | null>[]> = {};
 
   constructor() {
     this.maxSize = config.pool.maxSize;
     // Initialize empty pools for each language
     Object.keys(config.runtimes).forEach(lang => {
       this.pool[lang] = [];
+      this.pendingCreations[lang] = [];
     });
   }
 
@@ -35,11 +37,11 @@ class ContainerPool {
   }
 
   /**
-   * Creates a new container and adds it to the pool
+   * Creates a new container and returns the container ID directly (doesn't add to pool)
    */
-  private async createContainer(language: string) {
+  private async createContainerDirect(language: string): Promise<string | null> {
     const runtimeConfig = config.runtimes[language as keyof typeof config.runtimes];
-    if (!runtimeConfig) return;
+    if (!runtimeConfig) return null;
 
     try {
       // Build docker run command with appropriate settings
@@ -64,7 +66,6 @@ class ContainerPool {
       const { stdout } = await execAsync(dockerCmd);
       
       const containerId = stdout.trim();
-      this.pool[language].push(containerId);
       console.log(`Created ${language} container: ${containerId}`);
       
       // For MySQL, wait longer for initialization
@@ -73,34 +74,100 @@ class ContainerPool {
         await new Promise(resolve => setTimeout(resolve, 10000));
         console.log(`MySQL container ready`);
       }
+
+      return containerId;
     } catch (error) {
       console.error(`Failed to create ${language} container:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Creates a new container and adds it to the pool
+   */
+  private async createContainer(language: string) {
+    const containerId = await this.createContainerDirect(language);
+    if (containerId) {
+      this.pool[language].push(containerId);
     }
   }
 
   /**
    * Get a container from the pool.
+   * Creates new containers on-demand if pool is empty.
+   * Handles concurrent requests properly.
    */
   async getContainer(language: string): Promise<string> {
+    // Check if pool has available container
     if (this.pool[language].length > 0) {
-      return this.pool[language].shift()!;
+      const containerId = this.pool[language].shift()!;
+      console.log(`[Pool] Got ${language} container from pool: ${containerId.substring(0, 12)}`);
+      return containerId;
     }
     
-    console.warn(`Pool empty for ${language}, creating on-demand.`);
-    await this.createContainer(language);
-    return this.pool[language].shift()!;
+    // Pool is empty - create a new container on-demand
+    console.warn(`[Pool] Pool empty for ${language}, creating on-demand container...`);
+    
+    const containerId = await this.createContainerDirect(language);
+    
+    if (!containerId) {
+      throw new Error(`Failed to create ${language} container on-demand`);
+    }
+    
+    console.log(`[Pool] Created on-demand ${language} container: ${containerId.substring(0, 12)}`);
+    return containerId;
   }
 
   /**
-   * Recycle the container and remove associated volumes
+   * Return a container to the pool or delete it if pool is at max capacity
+   * This ensures we maintain exactly maxSize warm containers per language
    */
-  async recycleContainer(language: string, containerId: string) {
+  returnOrDeleteContainer(language: string, containerId: string) {
+    // If pool has space, return the container
+    if (this.pool[language].length < this.maxSize) {
+      this.pool[language].push(containerId);
+      console.log(`[Pool] Returned ${language} container to pool: ${containerId.substring(0, 12)} (pool size: ${this.pool[language].length})`);
+    } else {
+      // Pool is at capacity, delete the container after 5 second delay
+      setTimeout(() => {
+        exec(`docker rm -fv ${containerId}`, (err) => {
+          if (err) {
+            console.error(`[Pool] Failed to delete container ${containerId.substring(0, 12)}:`, err.message);
+          } else {
+            console.log(`[Pool] Deleted excess container: ${containerId.substring(0, 12)}`);
+          }
+        });
+      }, 5000);
+    }
+  }
+
+  /**
+   * Recycle the container and create a new one for the pool
+   * This is non-blocking - the new container is created asynchronously
+   * @deprecated Use returnOrDeleteContainer instead
+   */
+  recycleContainer(language: string, containerId: string) {
     // Remove container with -v flag to also remove associated volumes
     exec(`docker rm -fv ${containerId}`, (err) => {
-      if (err) console.error(`Failed to remove container ${containerId}:`, err);
-      else console.log(`Removed container and volumes: ${containerId}`);
+      if (err) console.error(`[Pool] Failed to remove container ${containerId.substring(0, 12)}:`, err.message);
+      else console.log(`[Pool] Removed container: ${containerId.substring(0, 12)}`);
     });
-    this.createContainer(language);
+    
+    // Asynchronously replenish the pool
+    this.createContainer(language).then(() => {
+      console.log(`[Pool] Replenished ${language} pool (size: ${this.pool[language].length})`);
+    });
+  }
+
+  /**
+   * Get current pool status for monitoring
+   */
+  getStatus(): Record<string, number> {
+    const status: Record<string, number> = {};
+    for (const lang of Object.keys(this.pool)) {
+      status[lang] = this.pool[lang].length;
+    }
+    return status;
   }
 
   /**

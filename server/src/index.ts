@@ -91,11 +91,21 @@ app.get('/api/admin/status', authenticateAdmin, async (req, res) => {
         return { id, image, status };
       });
 
+    // Get pool status (warm containers per language)
+    const poolStatus = containerPool.getStatus();
+    const totalWarmContainers = Object.values(poolStatus).reduce((sum, count) => sum + count, 0);
+    
+    // Active containers = total running - warm containers in pool
+    const activeContainers = containers.length - totalWarmContainers;
+
     // Get number of connected clients
     const connectedClients = io.engine.clientsCount;
 
     res.json({
       containers,
+      poolStatus,
+      totalWarmContainers,
+      activeContainers,
       connectedClients,
       timestamp: Date.now()
     });
@@ -285,7 +295,7 @@ io.on('connection', (socket) => {
       tempDir = null;
     }
     if (containerId && currentLanguage) {
-      containerPool.recycleContainer(currentLanguage, containerId);
+      containerPool.returnOrDeleteContainer(currentLanguage, containerId);
       containerId = null;
     }
     currentProcess = null;
@@ -345,7 +355,7 @@ export function runProject(language: string, files: File[]): Promise<RunResult> 
         fs.writeFileSync(path.join(tempDir, safeName), file.content);
       }
     } catch (err: any) {
-      containerPool.recycleContainer(language, containerId);
+      containerPool.returnOrDeleteContainer(language, containerId);
       return resolve({ stdout: '', stderr: `System Error: ${err.message}`, exitCode: 1 });
     }
 
@@ -359,7 +369,8 @@ export function runProject(language: string, files: File[]): Promise<RunResult> 
       }
 
       // 4. Execute the code inside the container
-      const execCommand = `timeout ${config.docker.timeout} docker exec -w /app ${containerId} /bin/sh -c "${command}"`;
+      // Use single quotes to prevent shell expansion on the host
+      const execCommand = `timeout ${config.docker.timeout} docker exec -w /app ${containerId} /bin/sh -c '${command}'`;
 
       exec(execCommand, (execError, stdout, stderr) => {
         cleanup();
@@ -388,7 +399,7 @@ export function runProject(language: string, files: File[]): Promise<RunResult> 
         fs.rmSync(tempDir, { recursive: true, force: true });
       } catch (e) { /* ignore */ }
       
-      containerPool.recycleContainer(language, containerId);
+      containerPool.returnOrDeleteContainer(language, containerId);
     }
   });
 }

@@ -6,10 +6,10 @@ export const config = {
     memory: '128m',
     cpus: '0.5',
     network: 'none',
-    timeout: '5s',
+    timeout: '30s', // Increased to handle compilation + execution time
   },
   pool: {
-    maxSize: 3, // Number of warm containers per language
+    maxSize: 3, // Number of warm containers per language (scales on-demand beyond this)
   },
   runtimes: {
     python: {

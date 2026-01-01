@@ -13,6 +13,9 @@ interface Container {
 
 interface AdminStatus {
   containers: Container[];
+  poolStatus: Record<string, number>;
+  totalWarmContainers: number;
+  activeContainers: number;
   connectedClients: number;
   timestamp: number;
 }
@@ -148,22 +151,22 @@ export function AdminDashboard({ token, apiUrl, onLogout }: AdminDashboardProps)
                   </div>
                 </div>
 
-                {/* Total Containers */}
+                {/* Warm Containers (Total in Pool) */}
                 <div className="bg-card border rounded-lg p-6">
                   <div className="flex items-center gap-3">
                     <Server className="h-8 w-8 text-purple-600" />
                     <div>
                       <h2 className="text-sm font-medium text-muted-foreground">
-                        Total Containers
+                        Warm Containers
                       </h2>
                       <p className="text-3xl font-bold mt-1">
-                        {status.containers.length}
+                        {status.totalWarmContainers}
                       </p>
                     </div>
                   </div>
                 </div>
 
-                {/* Active Containers */}
+                {/* Active Containers (Currently Executing) */}
                 <div className="bg-card border rounded-lg p-6">
                   <div className="flex items-center gap-3">
                     <Box className="h-8 w-8 text-green-600" />
@@ -172,7 +175,7 @@ export function AdminDashboard({ token, apiUrl, onLogout }: AdminDashboardProps)
                         Active Containers
                       </h2>
                       <p className="text-3xl font-bold mt-1">
-                        {status.containers.filter(c => c.status.includes('Up')).length}
+                        {status.activeContainers}
                       </p>
                     </div>
                   </div>
