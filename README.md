@@ -1,20 +1,20 @@
 # CodeRunner
 
-CodeRunner is a centralized code execution platform designed for educational lab environments. Its primary goal is to provide a seamless coding experience for multiple programming languages without requiring students to install compilers, interpreters, or runtime environments on their local machines.
+**Developed by F.A.B.R.I.C Club of Easwari Engineering College**
 
-The server hosts a full-featured web-based code editor with a file explorer, Monaco Editor, and real-time console output. Students can create files, write code, and execute their programs instantly. The code runs securely within isolated Docker containers on the server, and the output is streamed back to the browser in real-time via WebSockets.
+CodeRunner is a web-based code execution platform designed for educational lab environments. It provides a seamless coding experience without requiring students to install compilers or runtimes on their machines.
 
 ## ✨ Key Features
 
-- **Zero-Setup Lab Environment**: Students can start coding immediately using just a web browser. No local software installation is required.
-- **Full-Featured Code Editor**: Monaco Editor with syntax highlighting, IntelliSense, and keyboard shortcuts (Ctrl+S to save, Ctrl+Enter to run).
-- **File Explorer**: Create, rename, delete, and organize files and folders in a tree structure.
-- **Multi-File Project Support**: Write complex projects with multiple files and execute them together with dependency resolution.
-- **Real-Time Console Output**: Stream code execution output, errors, and stdin/stdout directly to the browser via WebSockets.
-- **Session Isolation**: Each user's workspace is temporary and automatically cleaned up after the browser is closed.
-- **Smart Auto-Run**: Click run to automatically execute all compatible files together—no file selection needed.
-- **Secure Sandbox**: All code runs in ephemeral, network-isolated Docker containers, ensuring the host server remains safe.
-- **Multi-Language Support**: Python, JavaScript, C++, and Java (more can be added by creating Docker images).
+- **Zero-Setup Lab Environment**: Code directly from a browser. No software installation needed.
+- **Full-Featured Code Editor**: Monaco Editor with syntax highlighting, IntelliSense, and shortcuts (Ctrl+S to save, Ctrl+Enter to run).
+- **File Explorer**: Create, organize, and manage files in a tree structure.
+- **Multi-File Project Support**: Write complex projects and execute with full dependency support.
+- **Real-Time Console Output**: Stream execution output via WebSockets.
+- **Multi-Console Interface**: Each file execution gets its own isolated console (like VS Code), limited to 2,000 outputs per console.
+- **Session Isolation**: Temporary workspaces with automatic cleanup.
+- **Secure Sandbox**: Code runs in isolated Docker containers.
+- **Multi-Language Support**: Python, JavaScript, C++, Java, and SQL.
 
 ## 🚀 Quick Start
 

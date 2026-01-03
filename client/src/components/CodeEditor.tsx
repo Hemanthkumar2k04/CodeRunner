@@ -14,25 +14,28 @@ import {
 } from '@/components/ui/tooltip';
 import { FileIcon } from '@/components/FileIcon';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import { X, Play, Loader2, Code2, Info } from 'lucide-react';
+import { X, Play, Code2, Info, Square } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface CodeEditorProps {
   onRunClick: () => void;
+  onStopClick: () => void;
 }
 
-export function CodeEditor({ onRunClick }: CodeEditorProps) {
+export function CodeEditor({ onRunClick, onStopClick }: CodeEditorProps) {
   const { theme } = useTheme();
   const files = useEditorStore((state: EditorState) => state.files);
   const activeFileId = useEditorStore((state: EditorState) => state.activeFileId);
   const openTabs = useEditorStore((state: EditorState) => state.openTabs);
-  const isRunning = useEditorStore((state: EditorState) => state.isRunning);
+  const consoles = useEditorStore((state: EditorState) => state.consoles);
   const setActiveFile = useEditorStore((state: EditorState) => state.setActiveFile);
   const closeTab = useEditorStore((state: EditorState) => state.closeTab);
   const updateContent = useEditorStore((state: EditorState) => state.updateContent);
   const markAsSaved = useEditorStore((state: EditorState) => state.markAsSaved);
 
   const activeFile = activeFileId ? files[activeFileId] : null;
+  const activeConsole = activeFileId ? consoles[activeFileId] : null;
+  const isRunning = activeConsole?.isRunning || false;
   const language = activeFile ? getMonacoLanguage(activeFile.name) : 'plaintext';
   const execLanguage = activeFile ? getLanguageFromExtension(activeFile.name) : null;
 
@@ -74,13 +77,18 @@ export function CodeEditor({ onRunClick }: CodeEditorProps) {
   }, [activeFileId, markAsSaved]);
 
   const handleRunClick = useCallback(() => {
-    // Save the file first if it's modified
-    if (activeFile?.isModified) {
-      handleSave();
+    if (isRunning) {
+      // Stop execution if already running
+      onStopClick();
+    } else {
+      // Save the file first if it's modified
+      if (activeFile?.isModified) {
+        handleSave();
+      }
+      // Then run the code
+      onRunClick();
     }
-    // Then run the code
-    onRunClick();
-  }, [activeFile?.isModified, handleSave, onRunClick]);
+  }, [activeFile?.isModified, handleSave, onRunClick, onStopClick, isRunning]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -194,17 +202,22 @@ export function CodeEditor({ onRunClick }: CodeEditorProps) {
                   size="sm"
                   className={cn(
                     "gap-2 h-8 px-4",
-                    isRunning && "animate-pulse"
+                    isRunning && "bg-destructive hover:bg-destructive/90"
                   )}
                   onClick={handleRunClick}
-                  disabled={!activeFile || !execLanguage || isRunning}
+                  disabled={!activeFile || !execLanguage}
                 >
                   {isRunning ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <>
+                      <Square className="h-4 w-4 fill-current" />
+                      <span className="font-medium">Stop</span>
+                    </>
                   ) : (
-                    <Play className="h-4 w-4 fill-current" />
+                    <>
+                      <Play className="h-4 w-4 fill-current" />
+                      <span className="font-medium">Run</span>
+                    </>
                   )}
-                  <span className="font-medium">Run</span>
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
@@ -213,7 +226,7 @@ export function CodeEditor({ onRunClick }: CodeEditorProps) {
                   : !execLanguage
                   ? 'Unsupported language'
                   : isRunning
-                  ? 'Code is running...'
+                  ? 'Stop execution'
                   : 'Run code (Ctrl+Enter)'}
               </TooltipContent>
             </Tooltip>

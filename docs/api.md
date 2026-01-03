@@ -1,93 +1,82 @@
-# API Documentation
+# Socket.io API
 
-## Base URL
+## Connection
 
-`http://localhost:3000`
+Client connects to `http://server:3000` via Socket.io.
 
-## Endpoints
+## Events
 
-### 1. Execute Code
+### Client → Server
 
-Executes a multi-file project in a secure, isolated environment.
+#### `run`
 
-- **URL**: `/run`
-- **Method**: `POST`
-- **Content-Type**: `application/json`
-
-#### Request Body
-
-| Field      | Type          | Required | Description                                                            |
-| ---------- | ------------- | -------- | ---------------------------------------------------------------------- |
-| `language` | `string`      | Yes      | The programming language ID. Supported: `python`, `cpp`, `javascript`. |
-| `files`    | `Array<File>` | Yes      | List of files to execute.                                              |
-
-**File Object Structure:**
+Execute code with session tracking.
 
 ```json
 {
-  "name": "filename.ext",
-  "content": "source code content",
-  "toBeExec": true // Optional: Set to true for the entry point file (e.g., main.py)
-}
-```
-
-#### Example Request
-
-```json
-{
+  "sessionId": "1767438075576-vq74dghil",
   "language": "python",
   "files": [
     {
       "name": "main.py",
-      "content": "from utils import add\nprint(add(5, 3))",
+      "path": "main.py",
+      "content": "print('Hello')",
       "toBeExec": true
-    },
-    {
-      "name": "utils.py",
-      "content": "def add(a, b):\n    return a + b"
     }
   ]
 }
 ```
 
-#### Success Response (200 OK)
+#### `stop`
+
+Stop execution for a specific console.
 
 ```json
 {
-  "stdout": "8\n",
-  "stderr": "",
-  "exitCode": 0
+  "sessionId": "1767438075576-vq74dghil"
 }
 ```
 
-#### Error Response (400 Bad Request)
+#### `input`
+
+Send stdin to running process.
+
+```json
+"user input here\n"
+```
+
+### Server → Client
+
+#### `output`
+
+Output from stdout/stderr/system.
 
 ```json
 {
-  "error": "Invalid request body. 'language' and 'files' are required."
+  "sessionId": "1767438075576-vq74dghil",
+  "type": "stdout|stderr|system",
+  "data": "output text"
 }
 ```
 
-#### Error Response (500 Internal Server Error)
+#### `exit`
+
+Process exited with code.
 
 ```json
 {
-  "error": "Execution failed due to system error."
+  "sessionId": "1767438075576-vq74dghil",
+  "code": 0
 }
 ```
 
-### 2. Health Check
+#### `error`
 
-Checks if the server is running.
-
-- **URL**: `/health`
-- **Method**: `GET`
-
-#### Success Response (200 OK)
+Execution error (optional sessionId).
 
 ```json
 {
-  "status": "ok",
-  "version": "1.0.0"
+  "sessionId": "1767438075576-vq74dghil",
+  "message": "Container error"
 }
 ```

@@ -137,6 +137,8 @@ io.on('connection', (socket) => {
   let tempDir: string | null = null;
   let containerId: string | null = null;
   let currentLanguage: string | null = null;
+  let currentSessionId: string | null = null;
+  let manuallyStopped: boolean = false;
   
   // Output buffering - batch chunks to reduce socket traffic and memory overhead
   // Instead of emitting every stdout/stderr chunk immediately, we buffer them and
@@ -145,16 +147,16 @@ io.on('connection', (socket) => {
   // - Network traffic (combined chunks are more efficient)
   // - Client-side memory pressure (reduces processing overhead)
   // - Server console logging (only critical logs kept after refactoring)
-  let outputBuffer: { type: 'stdout' | 'stderr'; data: string }[] = [];
+  let outputBuffer: { sessionId: string; type: 'stdout' | 'stderr'; data: string }[] = [];
   let flushBufferTimer: NodeJS.Timeout | null = null;
   
   const flushOutputBuffer = () => {
     if (outputBuffer.length > 0) {
       // Combine consecutive same-type chunks to further reduce overhead
       // e.g., [stdout:"a", stdout:"b", stderr:"c"] → [stdout:"ab", stderr:"c"]
-      const combined: { type: 'stdout' | 'stderr'; data: string }[] = [];
+      const combined: { sessionId: string; type: 'stdout' | 'stderr'; data: string }[] = [];
       for (const item of outputBuffer) {
-        if (combined.length > 0 && combined[combined.length - 1].type === item.type) {
+        if (combined.length > 0 && combined[combined.length - 1].type === item.type && combined[combined.length - 1].sessionId === item.sessionId) {
           combined[combined.length - 1].data += item.data;
         } else {
           combined.push(item);
@@ -173,22 +175,24 @@ io.on('connection', (socket) => {
     }
   };
 
-  socket.on('run', async (data: { language: string, files: File[] }) => {
-    const { language, files } = data;
+  socket.on('run', async (data: { sessionId: string; language: string, files: File[] }) => {
+    const { sessionId, language, files } = data;
     currentLanguage = language;
+    currentSessionId = sessionId;
+    manuallyStopped = false; // Reset flag for new execution
 
     const runtimeConfig = config.runtimes[language as keyof typeof config.runtimes];
     if (!runtimeConfig) {
-      socket.emit('output', { type: 'stderr', data: `Error: Unsupported language '${language}'\n` });
-      socket.emit('exit', 1);
-      return;
+      socket.emit('output', { sessionId, type: 'stderr', data: `Error: Unsupported language '${language}'\n` });
+      socket.emit('exit', { sessionId, code: 1 });
+      return;   
     }
 
     // Find entry file
     const entryFile = files.find(f => f.toBeExec);
     if (!entryFile && language !== 'cpp' && language !== 'sql') {
-       socket.emit('output', { type: 'stderr', data: 'Error: No entry file marked for execution.\n' });
-       socket.emit('exit', 1);
+       socket.emit('output', { sessionId, type: 'stderr', data: 'Error: No entry file marked for execution.\n' });
+       socket.emit('exit', { sessionId, code: 1 });
        return;
     }
     
@@ -197,8 +201,8 @@ io.on('connection', (socket) => {
     if (!execFile && language === 'sql') {
       execFile = files.find(f => f.name.endsWith('.sql'));
       if (!execFile) {
-        socket.emit('output', { type: 'stderr', data: 'Error: No SQL file found.\n' });
-        socket.emit('exit', 1);
+        socket.emit('output', { sessionId, type: 'stderr', data: 'Error: No SQL file found.\n' });
+        socket.emit('exit', { sessionId, code: 1 });
         return;
       }
     }
@@ -207,8 +211,8 @@ io.on('connection', (socket) => {
     try {
         command = getRunCommand(language, execFile ? execFile.path : '');
     } catch (e: any) {
-        socket.emit('output', { type: 'stderr', data: e.message + '\n' });
-        socket.emit('exit', 1);
+        socket.emit('output', { sessionId, type: 'stderr', data: e.message + '\n' });
+        socket.emit('exit', { sessionId, code: 1 });
         return;
     }
 
@@ -216,8 +220,8 @@ io.on('connection', (socket) => {
     try {
       containerId = await containerPool.getContainer(language);
     } catch (e) {
-      socket.emit('output', { type: 'stderr', data: 'System Error: Failed to acquire container\n' });
-      socket.emit('exit', 1);
+      socket.emit('output', { sessionId, type: 'stderr', data: 'System Error: Failed to acquire container\n' });
+      socket.emit('exit', { sessionId, code: 1 });
       return;
     }
 
@@ -234,8 +238,8 @@ io.on('connection', (socket) => {
       }
     } catch (err: any) {
       cleanup();
-      socket.emit('output', { type: 'stderr', data: `System Error: ${err.message}\n` });
-      socket.emit('exit', 1);
+      socket.emit('output', { sessionId, type: 'stderr', data: `System Error: ${err.message}\n` });
+      socket.emit('exit', { sessionId, code: 1 });
       return;
     }
 
@@ -244,8 +248,8 @@ io.on('connection', (socket) => {
     exec(cpCommand, (cpError) => {
       if (cpError) {
         cleanup();
-        socket.emit('output', { type: 'stderr', data: `System Error (Copy): ${cpError.message}\n` });
-        socket.emit('exit', 1);
+        socket.emit('output', { sessionId, type: 'stderr', data: `System Error (Copy): ${cpError.message}\n` });
+        socket.emit('exit', { sessionId, code: 1 });
         return;
       }
 
@@ -262,12 +266,12 @@ io.on('connection', (socket) => {
       currentProcess = spawn('docker', dockerArgs);
 
       currentProcess.stdout.on('data', (chunk: Buffer) => {
-        outputBuffer.push({ type: 'stdout', data: chunk.toString() });
+        outputBuffer.push({ sessionId, type: 'stdout', data: chunk.toString() });
         scheduleFlush();
       });
 
       currentProcess.stderr.on('data', (chunk: Buffer) => {
-        outputBuffer.push({ type: 'stderr', data: chunk.toString() });
+        outputBuffer.push({ sessionId, type: 'stderr', data: chunk.toString() });
         scheduleFlush();
       });
 
@@ -277,12 +281,15 @@ io.on('connection', (socket) => {
           clearTimeout(flushBufferTimer);
           flushOutputBuffer();
         }
-        socket.emit('exit', code);
+        // Only emit exit if not manually stopped (manual stop already emitted exit)
+        if (!manuallyStopped) {
+          socket.emit('exit', { sessionId, code });
+        }
         cleanup();
       });
 
       currentProcess.on('error', (err: any) => {
-        socket.emit('output', { type: 'stderr', data: `Process Error: ${err.message}\n` });
+        socket.emit('output', { sessionId, type: 'stderr', data: `Process Error: ${err.message}\n` });
         cleanup();
       });
     });
@@ -291,6 +298,17 @@ io.on('connection', (socket) => {
   socket.on('input', (data: string) => {
     if (currentProcess && currentProcess.stdin) {
       currentProcess.stdin.write(data);
+    }
+  });
+
+  socket.on('stop', (data: { sessionId: string }) => {
+    const { sessionId } = data;
+    if (currentProcess && currentSessionId === sessionId) {
+      manuallyStopped = true;
+      currentProcess.kill('SIGTERM');
+      socket.emit('output', { sessionId, type: 'system', data: '[Process terminated]\n' });
+      socket.emit('exit', { sessionId, code: -1 });
+      cleanup();
     }
   });
 

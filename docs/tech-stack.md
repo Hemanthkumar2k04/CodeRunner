@@ -1,16 +1,28 @@
-# Technology Stack
+# Tech Stack
 
 ## Frontend
 
-- **Language**: TypeScript
-- **Framework**: React
-- **Styling**: TailwindCSS
-- **UI Components**: ShadCN UI
-- **Code Editor**: Monaco Editor
+- **React** 19.2 - UI framework
+- **TypeScript** - Type safety
+- **TailwindCSS** - Styling
+- **ShadCN UI** - Component library
+- **Monaco Editor** - Code editor with IntelliSense
+- **Zustand** - State management with persistence
+- **Socket.io** - Real-time communication
+- **@tanstack/react-virtual** - Virtual list rendering (10k+ outputs)
 
 ## Backend
 
-- **Language**: TypeScript
-- **Runtime**: Node.js
-- **API Framework**: Express (API Layer)
-- **Execution Engine**: Docker (Execution Sandbox)
+- **Node.js + TypeScript** - Runtime & language
+- **Express** - API framework
+- **Socket.io** - WebSocket server for output streaming
+- **Docker** - Container execution sandbox
+- **Container Pool** - Pre-warmed containers for fast execution
+
+## Containerization
+
+- **Python** - Official python image
+- **Node.js** - Official node image
+- **Java** - Official openjdk image
+- **C++** - GCC-based image
+- **MySQL** - Official mysql image

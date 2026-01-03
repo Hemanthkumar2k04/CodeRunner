@@ -26,27 +26,46 @@ const attachListeners = (sock: Socket) => {
   sock.off('exit');
   sock.off('error');
 
-  sock.on('output', (data: { type: 'stdout' | 'stderr'; data: string }) => {
+  sock.on('output', (data: { sessionId: string; type: 'stdout' | 'stderr'; data: string }) => {
     console.log('[Socket] Received output:', data);
-    useEditorStore.getState().appendOutput({ type: data.type, data: data.data });
+    const store = useEditorStore.getState();
+    
+    // Find console by sessionId
+    const consoleState = Object.values(store.consoles).find(c => c.sessionId === data.sessionId);
+    if (consoleState) {
+      store.appendOutputToConsole(consoleState.fileId, { type: data.type, data: data.data });
+    }
   });
 
-  sock.on('exit', (code: number) => {
-    console.log('[Socket] Received exit:', code);
-    useEditorStore.getState().appendOutput({
-      type: 'system',
-      data: `\n[Process exited with code ${code}]`,
-    });
-    useEditorStore.getState().setRunning(false);
+  sock.on('exit', (data: { sessionId: string; code: number }) => {
+    console.log('[Socket] Received exit:', data);
+    const store = useEditorStore.getState();
+    
+    // Find console by sessionId
+    const consoleState = Object.values(store.consoles).find(c => c.sessionId === data.sessionId);
+    if (consoleState) {
+      store.appendOutputToConsole(consoleState.fileId, {
+        type: 'system',
+        data: `\n[Process exited with code ${data.code}]`,
+      });
+      store.setConsoleRunning(consoleState.fileId, false);
+    }
   });
 
-  sock.on('error', (data: { message: string }) => {
+  sock.on('error', (data: { sessionId?: string; message: string }) => {
     console.log('[Socket] Received error:', data);
-    useEditorStore.getState().appendOutput({
-      type: 'stderr',
-      data: `Error: ${data.message}`,
-    });
-    useEditorStore.getState().setRunning(false);
+    const store = useEditorStore.getState();
+    
+    if (data.sessionId) {
+      const consoleState = Object.values(store.consoles).find(c => c.sessionId === data.sessionId);
+      if (consoleState) {
+        store.appendOutputToConsole(consoleState.fileId, {
+          type: 'stderr',
+          data: `Error: ${data.message}`,
+        });
+        store.setConsoleRunning(consoleState.fileId, false);
+      }
+    }
   });
 
   // Debug: log all events

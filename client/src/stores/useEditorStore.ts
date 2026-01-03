@@ -5,22 +5,23 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 export const MAX_FILE_SIZE = 500 * 1024; // 500KB per file
 export const MAX_TOTAL_SIZE = 4 * 1024 * 1024; // 4MB total
 /**
- * Maximum number of console output entries to keep in memory.
- * When this limit is exceeded, oldest entries are automatically discarded.
+ * Maximum number of console output entries per console.
+ * Each file gets its own console with this limit.
  * 
  * This prevents unbounded memory growth during long-running sessions or
  * repeated code executions. Without this limit, the output array can grow
  * indefinitely and cause performance degradation and memory leaks.
  * 
- * 10,000 entries represents approximately 2-5MB of memory usage depending
- * on average output line length. Adjust based on target system constraints.
+ * 2,000 entries per console represents approximately 400KB-1MB of memory usage
+ * depending on average output line length. With multiple consoles, total memory
+ * is bounded by: 2,000 * number_of_active_consoles.
  * 
  * See also:
- * - appendOutput() in EditorState for buffer management implementation
+ * - appendOutputToConsole() in EditorState for buffer management implementation
  * - Console.tsx for rendering with virtualization (only visible entries rendered)
  * - server/src/index.ts for output batching on the server side
  */
-export const MAX_OUTPUT_ENTRIES = 10000; // Keep last 10,000 output entries to prevent memory bloat
+export const MAX_OUTPUT_ENTRIES_PER_CONSOLE = 2000; // Per-console limit to manage memory with multiple consoles
 
 export interface FileNode {
   id: string;
@@ -39,6 +40,15 @@ export interface OutputEntry {
   timestamp: number;
 }
 
+export interface ConsoleState {
+  fileId: string;
+  filePath: string; // Display name: "file.py" or "folder/file.py"
+  output: OutputEntry[];
+  isRunning: boolean;
+  sessionId: string | null;
+  createdAt: number;
+}
+
 export interface EditorState {
   // File system
   files: Record<string, FileNode>;
@@ -49,8 +59,8 @@ export interface EditorState {
   openTabs: string[];
   
   // Execution state
-  output: OutputEntry[];
-  isRunning: boolean;
+  consoles: Record<string, ConsoleState>; // fileId -> console state
+  activeConsoleId: string | null;
   selectedFilesForRun: string[];
   
   // Actions - File management
@@ -69,9 +79,15 @@ export interface EditorState {
   // Actions - Execution
   toggleFileForRun: (id: string) => void;
   setSelectedFilesForRun: (ids: string[]) => void;
-  clearOutput: () => void;
-  appendOutput: (entry: Omit<OutputEntry, 'timestamp'>) => void;
-  setRunning: (running: boolean) => void;
+  
+  // Console management
+  createConsole: (fileId: string, filePath: string, sessionId: string) => void;
+  deleteConsole: (fileId: string) => void;
+  setActiveConsole: (fileId: string | null) => void;
+  clearConsole: (fileId: string) => void;
+  appendOutputToConsole: (fileId: string, entry: Omit<OutputEntry, 'timestamp'>) => void;
+  setConsoleRunning: (fileId: string, running: boolean) => void;
+  getConsoleByFileId: (fileId: string) => ConsoleState | undefined;
   
   // Utilities
   getFileById: (id: string) => FileNode | undefined;
@@ -103,8 +119,8 @@ export const useEditorStore = create<EditorState>()(
       rootIds: [],
       activeFileId: null,
       openTabs: [],
-      output: [],
-      isRunning: false,
+      consoles: {},
+      activeConsoleId: null,
       selectedFilesForRun: [],
 
       // File management actions
@@ -286,12 +302,23 @@ export const useEditorStore = create<EditorState>()(
             fId => !idsToDelete.includes(fId)
           );
 
+          // Clean up consoles for deleted files
+          const newConsoles = { ...state.consoles };
+          idsToDelete.forEach(delId => delete newConsoles[delId]);
+          
+          // Update active console if it was deleted
+          const newActiveConsoleId = idsToDelete.includes(state.activeConsoleId || '')
+            ? (Object.keys(newConsoles)[0] || null)
+            : state.activeConsoleId;
+
           return {
             files: newFiles,
             rootIds: newRootIds,
             openTabs: newOpenTabs,
             activeFileId: newActiveFileId,
             selectedFilesForRun: newSelectedFiles,
+            consoles: newConsoles,
+            activeConsoleId: newActiveConsoleId,
           };
         });
       },
@@ -420,24 +447,105 @@ export const useEditorStore = create<EditorState>()(
         set({ selectedFilesForRun: ids });
       },
 
-      clearOutput: () => {
-        set({ output: [] });
+      // Console management actions
+      createConsole: (fileId: string, filePath: string, sessionId: string) => {
+        set(state => ({
+          consoles: {
+            ...state.consoles,
+            [fileId]: {
+              fileId,
+              filePath,
+              output: [],
+              isRunning: true,
+              sessionId,
+              createdAt: Date.now(),
+            },
+          },
+          activeConsoleId: fileId,
+        }));
       },
 
-      appendOutput: (entry: Omit<OutputEntry, 'timestamp'>) => {
+      deleteConsole: (fileId: string) => {
         set(state => {
-          let newOutput = [...state.output, { ...entry, timestamp: Date.now() }];
-          // Maintain max output entries to prevent memory bloat during long-running sessions
-          // When buffer exceeds MAX_OUTPUT_ENTRIES, discard oldest entries (keep only most recent)
-          if (newOutput.length > MAX_OUTPUT_ENTRIES) {
-            newOutput = newOutput.slice(-MAX_OUTPUT_ENTRIES);
-          }
-          return { output: newOutput };
+          const newConsoles = { ...state.consoles };
+          delete newConsoles[fileId];
+          
+          // If deleted console was active, switch to first available or null
+          const newActiveId = state.activeConsoleId === fileId
+            ? Object.keys(newConsoles)[0] || null
+            : state.activeConsoleId;
+          
+          return {
+            consoles: newConsoles,
+            activeConsoleId: newActiveId,
+          };
         });
       },
 
-      setRunning: (running: boolean) => {
-        set({ isRunning: running });
+      setActiveConsole: (fileId: string | null) => {
+        set({ activeConsoleId: fileId });
+      },
+
+      clearConsole: (fileId: string) => {
+        set(state => {
+          const console = state.consoles[fileId];
+          if (!console) return state;
+          
+          return {
+            consoles: {
+              ...state.consoles,
+              [fileId]: {
+                ...console,
+                output: [],
+              },
+            },
+          };
+        });
+      },
+
+      appendOutputToConsole: (fileId: string, entry: Omit<OutputEntry, 'timestamp'>) => {
+        set(state => {
+          const console = state.consoles[fileId];
+          if (!console) return state;
+          
+          let newOutput = [...console.output, { ...entry, timestamp: Date.now() }];
+          // Maintain max output entries per console to prevent memory bloat
+          // When buffer exceeds limit, discard oldest entries (keep only most recent)
+          if (newOutput.length > MAX_OUTPUT_ENTRIES_PER_CONSOLE) {
+            newOutput = newOutput.slice(-MAX_OUTPUT_ENTRIES_PER_CONSOLE);
+          }
+          
+          return {
+            consoles: {
+              ...state.consoles,
+              [fileId]: {
+                ...console,
+                output: newOutput,
+              },
+            },
+          };
+        });
+      },
+
+      setConsoleRunning: (fileId: string, running: boolean) => {
+        set(state => {
+          const console = state.consoles[fileId];
+          if (!console) return state;
+          
+          return {
+            consoles: {
+              ...state.consoles,
+              [fileId]: {
+                ...console,
+                isRunning: running,
+              },
+            },
+          };
+        });
+      },
+
+      getConsoleByFileId: (fileId: string) => {
+        return get().consoles[fileId];
       },
 
       // Utility functions

@@ -1,42 +1,35 @@
-# Architecture & Design
+# Architecture
 
-## 📂 Project Structure
+## System Overview
 
-```
-CodeRunner/
-├── client/                 # React Frontend application
-│   ├── src/                # Frontend source code
-│   └── vite.config.ts      # Vite configuration
-├── server/                 # Backend Node.js application
-│   ├── src/
-│   │   └── index.ts        # Core runner logic & example usage
-│   └── temp/               # Temporary directories for execution (gitignored)
-├── runtimes/               # Dockerfile definitions for language runtimes
-│   └── python/             # Python runtime configuration
-└── docker-compose.yml      # Service orchestration
-```
+CodeRunner uses a **Warm Container Pool** to minimize execution latency:
 
-## 🧩 How It Works
+1. **Initialization**: Server pre-warms 3 Docker containers per language on startup
+2. **Execution**: When code runs, the frontend sends files + entry point to backend via Socket.io
+3. **Container Acquisition**: Server grabs an idle container from the pool (~0ms overhead)
+4. **Execution**: Files are copied and executed inside container
+5. **Output Streaming**: Stdout/stderr/exit events streamed back via WebSockets
+6. **Cleanup**: Container killed and new one started to replenish pool
 
-The system uses a **Warm Container Pool** strategy to minimize execution latency.
+## Multi-Console Architecture
 
-1.  **Initialization**: On startup, the server pre-warms a set of Docker containers (default: 3 per language) that sit idle, waiting for requests.
-2.  **Submission**: When a student clicks "Run", the frontend bundles the source files and identifies the entry point (marked with `toBeExec: true`).
-3.  **Acquisition**: The server instantly acquires an idle container from the pool (0ms overhead). If the pool is empty, it creates a new one on demand.
-4.  **File Transfer**: The server writes the files to a temporary directory on the host and copies them into the running container using `docker cp`.
-5.  **Execution**: The entry file is executed inside the container using `docker exec`.
-6.  **Recycling**: After execution, the used container is killed and removed to ensure isolation. A new container is immediately started in the background to replenish the pool.
+Each file execution gets its own isolated console:
 
-## ⚡ Performance Optimization
+- **Session Tracking**: Each execution assigned unique sessionId
+- **Per-File Consoles**: Console named with file path (e.g., "src/main.py")
+- **Output Limits**: 2,000 entries per console, FIFO eviction when full
+- **Isolation**: Output properly routed by sessionId between server and client
+- **Tab Interface**: Switch between active consoles like VS Code
 
-To avoid the "Cold Start" penalty of Docker (which can take 1-2 seconds per request), CodeRunner maintains a pool of running containers.
+## Performance
 
-- **Cold Start**: `docker run` -> Mount -> Execute -> Stop. (~1.5s latency)
-- **Warm Pool**: `docker cp` -> `docker exec`. (~100ms latency)
+- **Cold Start**: `docker run` (~1.5s)
+- **Warm Pool**: `docker cp` + `docker exec` (~100ms)
+- **Virtualization**: React Virtual renders only visible rows (~30 rows visible, 10,000+ supported)
 
-## 🛡️ Security Features
+## Security
 
-- **Network Isolation**: Containers run with `--network none`.
-- **Resource Limits**: Memory and CPU usage are strictly capped.
-- **Ephemeral**: Containers are removed (`--rm`) immediately after execution.
-- **Timeouts**: Execution is hard-capped (default 5s) to prevent infinite loops.
+- **Network Isolation**: `--network none` on all containers
+- **Resource Limits**: CPU and memory capped per container
+- **Ephemeral Execution**: Containers removed immediately after use
+- **Execution Timeout**: Hard 5-second limit per execution

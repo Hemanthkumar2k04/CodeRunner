@@ -35,15 +35,16 @@ export function DependencyResolver({ open, onOpenChange }: DependencyResolverPro
   const files = useEditorStore((state: EditorState) => state.files);
   const rootIds = useEditorStore((state: EditorState) => state.rootIds);
   const activeFileId = useEditorStore((state: EditorState) => state.activeFileId);
-  const isRunning = useEditorStore((state: EditorState) => state.isRunning);
+  const consoles = useEditorStore((state: EditorState) => state.consoles);
   const selectedFilesForRun = useEditorStore((state: EditorState) => state.selectedFilesForRun);
   const setSelectedFilesForRun = useEditorStore((state: EditorState) => state.setSelectedFilesForRun);
-  const appendOutput = useEditorStore((state: EditorState) => state.appendOutput);
   const { runCode } = useSocket();
 
   const [localSelected, setLocalSelected] = useState<Set<string>>(new Set());
 
   const activeFile = activeFileId ? files[activeFileId] : null;
+  const activeConsole = activeFileId ? consoles[activeFileId] : null;
+  const isRunning = activeConsole?.isRunning || false;
   const activeLanguage = activeFile ? getLanguageFromExtension(activeFile.name) : null;
   
   // Get all files (non-folders) from the tree
@@ -113,8 +114,8 @@ export function DependencyResolver({ open, onOpenChange }: DependencyResolverPro
     setLocalSelected(new Set(activeFileId ? [activeFileId] : []));
   }, [activeFileId]);
 
-  const handleRun = useCallback(() => {
-    if (!activeFile || !activeLanguage || !isLanguageSupported(activeLanguage)) {
+  const handleRunWithSelection = useCallback(() => {
+    if (!activeFile || !activeLanguage || !isLanguageSupported(activeLanguage) || !activeFileId) {
       return;
     }
 
@@ -130,14 +131,14 @@ export function DependencyResolver({ open, onOpenChange }: DependencyResolverPro
       }));
 
     if (filesToRun.length === 0) {
-      appendOutput({ type: 'stderr', data: 'Error: No files selected to run' });
+      // Console not available here, will show error in console when created
       return;
     }
 
     // Ensure there's exactly one entry point
     const entryPointCount = filesToRun.filter((f) => f.toBeExec).length;
     if (entryPointCount !== 1) {
-      appendOutput({ type: 'stderr', data: 'Error: Entry point file not found' });
+      // Console not available here, will show error in console when created
       return;
     }
 
@@ -146,7 +147,7 @@ export function DependencyResolver({ open, onOpenChange }: DependencyResolverPro
 
     // Close dialog and run
     onOpenChange(false);
-    runCode(filesToRun, activeLanguage);
+    runCode(activeFileId, activeFile.path, filesToRun, activeLanguage);
   }, [
     activeFile,
     activeFileId,
@@ -156,7 +157,6 @@ export function DependencyResolver({ open, onOpenChange }: DependencyResolverPro
     setSelectedFilesForRun,
     onOpenChange,
     runCode,
-    appendOutput,
   ]);
 
   if (!activeFile || !activeLanguage) {
@@ -357,7 +357,7 @@ export function DependencyResolver({ open, onOpenChange }: DependencyResolverPro
             Cancel
           </Button>
           <Button
-            onClick={handleRun}
+            onClick={handleRunWithSelection}
             disabled={localSelected.size === 0 || isRunning}
             className="gap-2 min-w-[120px]"
           >

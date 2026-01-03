@@ -13,7 +13,7 @@ import type { EditorState } from './stores/useEditorStore';
 import { getLanguageFromExtension, flattenTree, isLanguageSupported, isDataFile } from './lib/file-utils';
 
 function AppContent() {
-  const { runCode, disconnect } = useSocket();
+  const { runCode, stopCode, disconnect } = useSocket();
   const files = useEditorStore((state: EditorState) => state.files);
   const rootIds = useEditorStore((state: EditorState) => state.rootIds);
   const activeFileId = useEditorStore((state: EditorState) => state.activeFileId);
@@ -57,12 +57,19 @@ function AppContent() {
         toBeExec: f.id === activeFileId,
       }));
 
-    if (compatibleFiles.length > 0) {
+    if (compatibleFiles.length > 0 && activeFileId) {
       // Expand console when running code
       setIsConsoleMinimized(false);
-      runCode(compatibleFiles, activeLanguage);
+      runCode(activeFileId, activeFile.path, compatibleFiles, activeLanguage);
     }
   }, [activeFileId, files, rootIds, runCode]);
+
+  // Handle stop button click
+  const handleStopClick = useCallback(() => {
+    if (activeFileId) {
+      stopCode(activeFileId);
+    }
+  }, [activeFileId, stopCode]);
 
   // Cleanup socket on unmount
   useEffect(() => {
@@ -149,6 +156,7 @@ function AppContent() {
           <div className="flex-1 min-h-0 overflow-hidden">
             <CodeEditor 
               onRunClick={handleRunClick}
+              onStopClick={handleStopClick}
             />
           </div>
 
