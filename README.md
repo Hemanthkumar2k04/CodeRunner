@@ -1,4 +1,7 @@
-# CodeRunner
+<p align="center">
+  <img src="client/src/assets/CodeRunner.png" alt="CodeRunner Logo" width="80" style="vertical-align: middle;"/>
+  <span style="font-size: 48px; font-weight: bold; vertical-align: middle; margin-left: 20px;">CodeRunner</span>
+</p>
 
 **Developed by F.A.B.R.I.C Club of Easwari Engineering College**
 

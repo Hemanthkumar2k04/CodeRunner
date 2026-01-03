@@ -2,6 +2,7 @@ import { Code2, Moon, Sun, AlertTriangle } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useTheme } from "./theme-provider"
 import fabricLogo from "../assets/fabric.png"
+import codeRunnerLogo from "../assets/CodeRunner.png"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import KeyboardShortcutsModal from "./KeyboardShortcutsModal";
 
@@ -69,9 +70,11 @@ export function Navbar() {
 
           {/* Brand Section */}
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <Code2 className="h-5 w-5 text-primary" />
-            </div>
+            <img
+              src={codeRunnerLogo}
+              alt="CodeRunner Logo"
+              className="h-8 w-auto"
+            />
             <div className="flex flex-col">
               <span className="font-bold text-lg leading-none">CodeRunner</span>
               <span className="text-xs text-muted-foreground">Web IDE</span>
