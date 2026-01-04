@@ -37,7 +37,7 @@ const attachListeners = (sock: Socket) => {
     }
   });
 
-  sock.on('exit', (data: { sessionId: string; code: number }) => {
+  sock.on('exit', (data: { sessionId: string; code: number; executionTime?: number }) => {
     console.log('[Socket] Received exit:', data);
     const store = useEditorStore.getState();
     
@@ -49,6 +49,11 @@ const attachListeners = (sock: Socket) => {
         data: `\n[Process exited with code ${data.code}]`,
       });
       store.setConsoleRunning(consoleState.fileId, false);
+      
+      // Set execution time if provided
+      if (data.executionTime !== undefined) {
+        store.setConsoleExecutionTime(consoleState.fileId, data.executionTime);
+      }
     }
   });
 

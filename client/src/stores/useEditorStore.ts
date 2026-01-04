@@ -47,6 +47,7 @@ export interface ConsoleState {
   isRunning: boolean;
   sessionId: string | null;
   createdAt: number;
+  executionTime: number | null; // Execution time in milliseconds
 }
 
 export interface EditorState {
@@ -87,6 +88,7 @@ export interface EditorState {
   clearConsole: (fileId: string) => void;
   appendOutputToConsole: (fileId: string, entry: Omit<OutputEntry, 'timestamp'>) => void;
   setConsoleRunning: (fileId: string, running: boolean) => void;
+  setConsoleExecutionTime: (fileId: string, time: number) => void;
   getConsoleByFileId: (fileId: string) => ConsoleState | undefined;
   
   // Utilities
@@ -431,6 +433,7 @@ export const useEditorStore = create<EditorState>()(
         }));
       },
 
+      // Network actions
       // Execution actions
       toggleFileForRun: (id: string) => {
         set(state => {
@@ -449,20 +452,25 @@ export const useEditorStore = create<EditorState>()(
 
       // Console management actions
       createConsole: (fileId: string, filePath: string, sessionId: string) => {
-        set(state => ({
-          consoles: {
-            ...state.consoles,
-            [fileId]: {
-              fileId,
-              filePath,
-              output: [],
-              isRunning: true,
-              sessionId,
-              createdAt: Date.now(),
+        set(state => {
+          const existingConsole = state.consoles[fileId];
+          return {
+            consoles: {
+              ...state.consoles,
+              [fileId]: {
+                fileId,
+                filePath,
+                output: [],
+                isRunning: true,
+                sessionId,
+                // Preserve original createdAt if console exists, otherwise use current time
+                createdAt: existingConsole?.createdAt ?? Date.now(),
+                executionTime: null,
+              },
             },
-          },
-          activeConsoleId: fileId,
-        }));
+            activeConsoleId: fileId,
+          };
+        });
       },
 
       deleteConsole: (fileId: string) => {
@@ -538,6 +546,23 @@ export const useEditorStore = create<EditorState>()(
               [fileId]: {
                 ...console,
                 isRunning: running,
+              },
+            },
+          };
+        });
+      },
+
+      setConsoleExecutionTime: (fileId: string, time: number) => {
+        set(state => {
+          const console = state.consoles[fileId];
+          if (!console) return state;
+          
+          return {
+            consoles: {
+              ...state.consoles,
+              [fileId]: {
+                ...console,
+                executionTime: time,
               },
             },
           };

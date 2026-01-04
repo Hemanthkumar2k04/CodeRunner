@@ -5,11 +5,14 @@ export const config = {
   docker: {
     memory: '128m',
     cpus: '0.5',
-    network: 'none',
     timeout: '30s', // Increased to handle compilation + execution time
   },
-  pool: {
-    maxSize: 3, // Number of warm containers per language (scales on-demand beyond this)
+  sessionContainers: {
+    networkPrefix: 'coderunner-session-',
+    ttl: 60000,              // 1 minute (60000ms)
+    cleanupInterval: 30000,  // Check for expired containers every 30 seconds
+    maxPerSession: 10,       // Warning threshold (not hard limit)
+    autoCleanup: true,
   },
   runtimes: {
     python: {

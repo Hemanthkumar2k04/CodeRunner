@@ -15,8 +15,11 @@ CodeRunner is a web-based code execution platform designed for educational lab e
 - **Multi-File Project Support**: Write complex projects and execute with full dependency support.
 - **Real-Time Console Output**: Stream execution output via WebSockets.
 - **Multi-Console Interface**: Each file execution gets its own isolated console (like VS Code), limited to 2,000 outputs per console.
-- **Session Isolation**: Temporary workspaces with automatic cleanup.
-- **Secure Sandbox**: Code runs in isolated Docker containers.
+- **Smart Container Management**: On-demand container creation with 60-second TTL and automatic cleanup.
+- **Network-Enabled Execution**: All containers support networking for socket programming and multi-file projects (~1-2s first run, ~200-400ms on reuse).
+- **Execution Time Display**: Real-time performance metrics shown in console tabs.
+- **Session Isolation**: Temporary workspaces with automatic cleanup on disconnect.
+- **Secure Sandbox**: Code runs in isolated Docker containers with resource limits.
 - **Multi-Language Support**: Python, JavaScript, C++, Java, and SQL.
 
 ## 🚀 Quick Start
@@ -127,7 +130,8 @@ CodeRunner/
 ├── server/                    # Backend Node.js application
 │   ├── src/
 │   │   ├── index.ts          # Socket.IO server & execution engine
-│   │   ├── pool.ts           # Container pool management
+│   │   ├── pool.ts           # Container pool & session management
+│   │   ├── networkManager.ts # Docker network lifecycle
 │   │   └── config.ts         # Configuration settings
 │   ├── temp/                 # Temporary files (gitignored)
 │   ├── tsconfig.json
@@ -146,7 +150,7 @@ CodeRunner/
 1. **Create a file:** Click the `+` icon in the Workspace explorer to create a new file
 2. **Write code:** The file opens automatically in the editor. Code syntax highlighting is automatic based on file extension
 3. **Run code:** Click the **Run** button (or Ctrl+Enter) to execute all compatible files
-4. **View output:** Console output appears in the bottom panel in real-time
+4. **View output:** Console output appears in the bottom panel in real-time with execution time displayed
 5. **Organize files:** Right-click files/folders to rename, delete, or create new items
 
 ## 🔧 Configuration
@@ -157,7 +161,8 @@ Edit `server/src/config.ts` to modify:
 
 - Server port (default: 3000)
 - Docker runtime images
-- Container pool size
+- Container TTL (default: 60 seconds)
+- Cleanup interval (default: 30 seconds)
 - Memory and CPU limits
 - Execution timeout
 
@@ -170,20 +175,33 @@ Edit `client/vite.config.ts` to:
 
 ## 🛡️ Security
 
-- **Network Isolation**: Containers run with `--network none`
+- **Network Isolation**: Each session gets its own isolated Docker bridge network
 - **Resource Limits**: Memory and CPU usage are capped
-- **Ephemeral Execution**: Containers are removed after execution
+- **Automatic Cleanup**: Containers expire after 60 seconds or on disconnect
 - **Timeout Protection**: Execution is limited to 5 seconds by default
 - **Session Isolation**: Each user's data exists only in browser sessionStorage
 
 ## 📊 Performance
 
-CodeRunner uses a **Warm Container Pool** strategy:
+CodeRunner uses a **Session-Based Container Pool with TTL**:
 
-- Pre-warmed containers are ready (~100ms latency)
-- Eliminates Docker cold-start penalty (~1.5s)
-- Containers are recycled after each execution
-- Default: 3 containers per language
+**On-Demand Container Creation**:
+
+- Containers created when needed (~1-2s first execution)
+- All containers have networking enabled by default
+- Ideal for socket programming, multi-file projects, and general execution
+
+**Smart Container Reuse**:
+
+- Containers reused within 60-second TTL window (~200-400ms)
+- TTL refreshes on each execution for active sessions
+- Background cleanup job runs every 30 seconds
+
+**Automatic Resource Management**:
+
+- Containers expire after 60 seconds of inactivity
+- Immediate cleanup on user disconnect
+- Zero idle containers for efficient resource utilization
 
 ## 🤝 Contributing
 

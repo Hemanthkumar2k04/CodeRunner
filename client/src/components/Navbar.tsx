@@ -1,4 +1,4 @@
-import { Code2, Moon, Sun, AlertTriangle } from "lucide-react"
+import { Moon, Sun, AlertTriangle } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useTheme } from "./theme-provider"
 import fabricLogo from "../assets/fabric.png"

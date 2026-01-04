@@ -5,8 +5,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { containerPool } from './pool';
+import { sessionPool } from './pool';
 import { config } from './config';
+import { getOrCreateSessionNetwork, deleteSessionNetwork, getNetworkName, cleanupOrphanedNetworks } from './networkManager';
 
 const app = express();
 const httpServer = createServer(app);
@@ -78,21 +79,17 @@ app.get('/api/admin/status', authenticateAdmin, async (req, res) => {
         return { id, image, status };
       });
 
-    // Get pool status (warm containers per language)
-    const poolStatus = containerPool.getStatus();
-    const totalWarmContainers = Object.values(poolStatus).reduce((sum, count) => sum + count, 0);
-    
-    // Active containers = total running - warm containers in pool
-    const activeContainers = containers.length - totalWarmContainers;
+    // Get pool statistics
+    const poolStats = sessionPool.getStats();
 
     // Get number of connected clients
     const connectedClients = io.engine.clientsCount;
 
     res.json({
       containers,
-      poolStatus,
-      totalWarmContainers,
-      activeContainers,
+      poolStats,
+      totalContainers: poolStats.totalContainers,
+      activeContainers: containers.length,
       connectedClients,
       timestamp: Date.now()
     });
@@ -180,6 +177,7 @@ io.on('connection', (socket) => {
     currentLanguage = language;
     currentSessionId = sessionId;
     manuallyStopped = false; // Reset flag for new execution
+    const startTime = Date.now(); // Track execution start time
 
     const runtimeConfig = config.runtimes[language as keyof typeof config.runtimes];
     if (!runtimeConfig) {
@@ -216,11 +214,12 @@ io.on('connection', (socket) => {
         return;
     }
 
-    // 1. Get container
+    // 1. Get or create session container (always with networking)
     try {
-      containerId = await containerPool.getContainer(language);
-    } catch (e) {
-      socket.emit('output', { sessionId, type: 'stderr', data: 'System Error: Failed to acquire container\n' });
+      const networkName = await getOrCreateSessionNetwork(socket.id);
+      containerId = await sessionPool.getOrCreateContainer(language, socket.id, networkName);
+    } catch (e: any) {
+      socket.emit('output', { sessionId, type: 'stderr', data: `System Error: Failed to acquire container - ${e.message}\n` });
       socket.emit('exit', { sessionId, code: 1 });
       return;
     }
@@ -281,9 +280,13 @@ io.on('connection', (socket) => {
           clearTimeout(flushBufferTimer);
           flushOutputBuffer();
         }
+        
+        // Calculate execution time
+        const executionTime = Date.now() - startTime;
+        
         // Only emit exit if not manually stopped (manual stop already emitted exit)
         if (!manuallyStopped) {
-          socket.emit('exit', { sessionId, code });
+          socket.emit('exit', { sessionId, code, executionTime });
         }
         cleanup();
       });
@@ -312,7 +315,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('disconnect', () => {
+  socket.on('disconnect', async () => {
     if (flushBufferTimer) {
       clearTimeout(flushBufferTimer);
     }
@@ -320,6 +323,14 @@ io.on('connection', (socket) => {
       currentProcess.kill();
     }
     cleanup();
+    
+    // Clean up all session containers for this socket
+    await sessionPool.cleanupSession(socket.id);
+    
+    // Clean up session network
+    await deleteSessionNetwork(socket.id).catch(err => 
+      console.error(`[Disconnect] Failed to cleanup session network:`, err)
+    );
   });
 
   function cleanup() {
@@ -329,115 +340,14 @@ io.on('connection', (socket) => {
       } catch (e) { /* ignore */ }
       tempDir = null;
     }
-    if (containerId && currentLanguage) {
-      containerPool.returnOrDeleteContainer(currentLanguage, containerId);
+    if (containerId) {
+      // Return container to pool (TTL refreshed)
+      sessionPool.returnContainer(containerId, socket.id);
       containerId = null;
     }
     currentProcess = null;
   }
 });
-
-
-/**
- * Runs a multi-file project using a WARM container from the pool
- * @deprecated Use WebSocket 'run' event for interactive execution
- */
-export function runProject(language: string, files: File[]): Promise<RunResult> {
-  return new Promise(async (resolve) => {
-    const runtimeConfig = config.runtimes[language as keyof typeof config.runtimes];
-    if (!runtimeConfig) {
-      return resolve({ 
-        stdout: '', 
-        stderr: `Error: Unsupported language '${language}'`, 
-        exitCode: 1 
-      });
-    }
-
-    // Find entry file
-    const entryFile = files.find(f => f.toBeExec);
-    if (!entryFile && language !== 'cpp') {
-       return resolve({ stdout: '', stderr: 'Error: No entry file marked for execution (toBeExec: true).', exitCode: 1 });
-    }
-
-    // Construct command
-    let command = '';
-    try {
-        // For C++, entryFile might be undefined, which is fine for the helper if we handle it, 
-        // but our helper expects a string.
-        // Let's pass a dummy string for C++ or handle it inside.
-        command = getRunCommand(language, entryFile ? entryFile.name : '');
-    } catch (e: any) {
-        return resolve({ stdout: '', stderr: e.message, exitCode: 1 });
-    }
-
-    // 1. Get a warm container
-    let containerId: string;
-    try {
-      containerId = await containerPool.getContainer(language);
-    } catch (e) {
-      return resolve({ stdout: '', stderr: 'System Error: Failed to acquire container', exitCode: 1 });
-    }
-
-    const runId = Date.now().toString() + Math.random().toString(36).substring(7);
-    const tempDir = path.resolve(__dirname, '..', 'temp', `runner-${runId}`);
-
-    // 2. Create temp directory and write ALL files
-    try {
-      fs.mkdirSync(tempDir, { recursive: true });
-      
-      for (const file of files) {
-        const safeName = path.basename(file.name); 
-        fs.writeFileSync(path.join(tempDir, safeName), file.content);
-      }
-    } catch (err: any) {
-      containerPool.returnOrDeleteContainer(language, containerId);
-      return resolve({ stdout: '', stderr: `System Error: ${err.message}`, exitCode: 1 });
-    }
-
-    // 3. Copy files TO the container
-    const cpCommand = `docker cp "${tempDir}/." ${containerId}:/app/`;
-
-    exec(cpCommand, (cpError) => {
-      if (cpError) {
-        cleanup();
-        return resolve({ stdout: '', stderr: `System Error (Copy): ${cpError.message}`, exitCode: 1 });
-      }
-
-      // 4. Execute the code inside the container
-      // Use single quotes to prevent shell expansion on the host
-      const execCommand = `timeout ${config.docker.timeout} docker exec -w /app ${containerId} /bin/sh -c '${command}'`;
-
-      exec(execCommand, (execError, stdout, stderr) => {
-        cleanup();
-
-        if (execError) {
-          if ((execError as any).code === 124 || execError.code === 124) {
-            return resolve({ 
-              stdout: stdout || '', 
-              stderr: 'Error: Execution timed out', 
-              exitCode: 124 
-            });
-          }
-          return resolve({ 
-            stdout: stdout || '', 
-            stderr: stderr || execError.message, 
-            exitCode: (execError as any).code || 1 
-          });
-        }
-
-        resolve({ stdout, stderr, exitCode: 0 });
-      });
-    });
-
-    function cleanup() {
-      try {
-        fs.rmSync(tempDir, { recursive: true, force: true });
-      } catch (e) { /* ignore */ }
-      
-      containerPool.returnOrDeleteContainer(language, containerId);
-    }
-  });
-}
 
 // --- API Endpoints ---
 
@@ -445,7 +355,8 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', version: '1.0.0' });
 });
 
-app.post('/run', async (req, res) => {
+// API endpoint for code execution - networking always enabled
+app.post('/api/run', async (req, res) => {
   const { language, files } = req.body;
 
   if (!language || !files || !Array.isArray(files)) {
@@ -458,13 +369,122 @@ app.post('/run', async (req, res) => {
     return;
   }
 
+  const startTime = Date.now();
+  const sessionId = `api-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+  
   try {
-    const result = await runProject(language, files);
-    res.json(result);
+    const result = await executeWithSessionContainer(language, files, sessionId);
+    const executionTime = Date.now() - startTime;
+    
+    res.json({
+      ...result,
+      executionTime
+    });
   } catch (error: any) {
-    res.status(500).json({ error: `Execution failed: ${error.message}` });
+    const executionTime = Date.now() - startTime;
+    res.status(500).json({ 
+      error: `Execution failed: ${error.message}`,
+      executionTime
+    });
   }
 });
+
+/**
+ * Execute code with session container (for API endpoint)
+ * Always uses networking
+ */
+async function executeWithSessionContainer(
+  language: string,
+  files: File[],
+  sessionId: string
+): Promise<RunResult> {
+  return new Promise(async (resolve) => {
+    const runtimeConfig = config.runtimes[language as keyof typeof config.runtimes];
+    if (!runtimeConfig) {
+      return resolve({
+        stdout: '',
+        stderr: `Error: Unsupported language '${language}'`,
+        exitCode: 1
+      });
+    }
+
+    // Find entry file
+    const entryFile = files.find(f => f.toBeExec);
+    if (!entryFile && language !== 'cpp' && language !== 'sql') {
+      return resolve({ stdout: '', stderr: 'Error: No entry file marked for execution.', exitCode: 1 });
+    }
+
+    let execFile = entryFile;
+    if (!execFile && language === 'sql') {
+      execFile = files.find(f => f.name.endsWith('.sql'));
+      if (!execFile) {
+        return resolve({ stdout: '', stderr: 'Error: No SQL file found.', exitCode: 1 });
+      }
+    }
+
+    let command = '';
+    try {
+      command = getRunCommand(language, execFile ? execFile.path : '');
+    } catch (e: any) {
+      return resolve({ stdout: '', stderr: e.message, exitCode: 1 });
+    }
+
+    let containerId: string | null = null;
+    let tempDir: string | null = null;
+
+    try {
+      // Always use session container with networking
+      const networkName = await getOrCreateSessionNetwork(sessionId);
+      containerId = await sessionPool.getOrCreateContainer(language, sessionId, networkName);
+
+      const runId = Date.now().toString() + Math.random().toString(36).substring(7);
+      tempDir = path.resolve(__dirname, '..', 'temp', `runner-${runId}`);
+
+      // Write files
+      fs.mkdirSync(tempDir, { recursive: true });
+      for (const file of files) {
+        const filePath = path.join(tempDir, file.path);
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        fs.writeFileSync(filePath, file.content);
+      }
+
+      // Copy files to container
+      const cpCommand = `docker cp "${tempDir}/." ${containerId}:/app/`;
+      await new Promise<void>((res, rej) => {
+        exec(cpCommand, (err) => err ? rej(err) : res());
+      });
+
+      // Execute command - use proper escaping
+      const execCommand = `docker exec -w /app ${containerId} /bin/sh -c ${JSON.stringify(command)}`;
+      exec(execCommand, { timeout: 30000 }, (error, stdout, stderr) => {
+        const exitCode = error?.code ?? 0;
+
+        // Cleanup
+        if (tempDir) {
+          try {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+          } catch (e) { /* ignore */ }
+        }
+
+        if (containerId) {
+          // Return to pool for reuse (TTL refreshed)
+          sessionPool.returnContainer(containerId, sessionId);
+        }
+
+        resolve({ stdout, stderr, exitCode });
+      });
+    } catch (error: any) {
+      // Cleanup on error
+      if (tempDir) {
+        try {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        } catch (e) { /* ignore */ }
+      }
+      
+      resolve({ stdout: '', stderr: `System Error: ${error.message}`, exitCode: 1 });
+    }
+  });
+}
 
 // Start Server
 if (require.main === module) {
@@ -477,30 +497,45 @@ if (require.main === module) {
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
   });
 
-  containerPool.initialize().then(() => {
-    const server = httpServer.listen(Number(PORT), '0.0.0.0', () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-      console.log(`Network access: http://<your-ip-address>:${PORT}`);
-    });
-
-    server.on('error', (err) => {
-      console.error('Server failed to start:', err);
-      process.exit(1);
-    });
-
-    // Handle graceful shutdown
-    const gracefulShutdown = async () => {
-      console.log('\nShutting down server...');
-      await containerPool.cleanup();
-      server.close(() => {
-        console.log('Server closed.');
-        process.exit(0);
-      });
-    };
-
-    process.on('SIGINT', gracefulShutdown);
-    process.on('SIGTERM', gracefulShutdown);
+  // Session pool uses on-demand containers - no initialization needed
+  console.log('[Server] Starting with session-based container pool (on-demand + TTL)');
+  
+  const server = httpServer.listen(Number(PORT), '0.0.0.0', () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Network access: http://<your-ip-address>:${PORT}`);
   });
+
+  server.on('error', (err) => {
+    console.error('Server failed to start:', err);
+    process.exit(1);
+  });
+
+  // Start TTL cleanup monitor
+  const ttlCleanupInterval = setInterval(async () => {
+    await sessionPool.cleanupExpiredContainers();
+  }, config.sessionContainers.cleanupInterval);
+
+  // Periodic cleanup of orphaned networks (every 30 minutes)
+  const networkCleanupInterval = setInterval(async () => {
+    console.log('[Cleanup] Running periodic network cleanup...');
+    await cleanupOrphanedNetworks(config.sessionContainers.autoCleanup ? 1800000 : 0);
+  }, 30 * 60 * 1000);
+
+  // Handle graceful shutdown
+  const gracefulShutdown = async () => {
+    console.log('\nShutting down server...');
+    clearInterval(ttlCleanupInterval);
+    clearInterval(networkCleanupInterval);
+    await sessionPool.cleanupAll();
+    await cleanupOrphanedNetworks(0); // Clean up all networks on shutdown
+    server.close(() => {
+      console.log('Server closed.');
+      process.exit(0);
+    });
+  };
+
+  process.on('SIGINT', gracefulShutdown);
+  process.on('SIGTERM', gracefulShutdown);
 }
 
 export default app;

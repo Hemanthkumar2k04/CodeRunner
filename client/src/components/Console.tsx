@@ -317,7 +317,14 @@ export function Console({ isMinimized, onToggleMinimize }: ConsoleProps) {
                       value={console.fileId}
                       className="relative rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:bg-muted/30 px-3 py-2 gap-2"
                     >
-                      <span className="text-sm max-w-[200px] truncate">{console.filePath}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm max-w-[150px] truncate">{console.filePath}</span>
+                        {console.executionTime !== null && (
+                          <span className="text-xs text-green-800 dark:text-green-300 font-mono bg-green-200/70 dark:bg-green-900/60 px-1.5 py-0.5 rounded">
+                            {console.executionTime}ms
+                          </span>
+                        )}
+                      </div>
                       <Button
                         variant="ghost"
                         size="icon"

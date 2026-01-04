@@ -4,52 +4,124 @@ import { config } from './config';
 
 const execAsync = promisify(exec);
 
-class ContainerPool {
-  private pool: Record<string, string[]> = {};
-  private maxSize: number;
-  private pendingCreations: Record<string, Promise<string | null>[]> = {};
+/**
+ * Session Container with TTL
+ * Represents a container associated with a user session
+ */
+interface SessionContainer {
+  containerId: string;
+  language: string;
+  sessionId: string;
+  networkName: string;
+  lastUsed: number;    // timestamp
+  inUse: boolean;      // whether container is currently executing code
+}
 
+/**
+ * Session-Based Container Pool with TTL
+ * All containers are created with networking and associated with user sessions.
+ * Containers are reused within the same session and deleted after TTL expiry or disconnect.
+ */
+class SessionContainerPool {
+  // Map: sessionId -> array of containers for that session
+  private pool: Map<string, SessionContainer[]> = new Map();
+  
   constructor() {
-    this.maxSize = config.pool.maxSize;
-    // Initialize empty pools for each language
-    Object.keys(config.runtimes).forEach(lang => {
-      this.pool[lang] = [];
-      this.pendingCreations[lang] = [];
-    });
+    console.log('[Pool] Initialized session-based container pool with TTL');
   }
 
   /**
-   * Initialize the pool with warm containers
+   * Get or create a container for the session and language
+   * Reuses existing containers within the same session or creates new ones
    */
-  async initialize() {
-    // Ensure we start clean by removing any old containers from previous runs
-    await this.cleanup();
-
-    console.log('Initializing Container Pool...');
-    const promises = [];
-    for (const lang of Object.keys(config.runtimes)) {
-      for (let i = 0; i < this.maxSize; i++) {
-        promises.push(this.createContainer(lang));
-      }
-    }
-    await Promise.all(promises);
-    console.log('Container Pool Initialized 🚀');
-  }
-
-  /**
-   * Creates a new container and returns the container ID directly (doesn't add to pool)
-   */
-  private async createContainerDirect(language: string): Promise<string | null> {
+  async getOrCreateContainer(
+    language: string,
+    sessionId: string,
+    networkName: string
+  ): Promise<string> {
     const runtimeConfig = config.runtimes[language as keyof typeof config.runtimes];
-    if (!runtimeConfig) return null;
+    if (!runtimeConfig) {
+      throw new Error(`Unknown language: ${language}`);
+    }
 
+    // Check if session has containers
+    const sessionContainers = this.pool.get(sessionId) || [];
+    
+    // Find available container for this language (not in use)
+    const existingContainer = sessionContainers.find(
+      c => c.language === language && !c.inUse
+    );
+
+    if (existingContainer) {
+      // Reuse existing container
+      existingContainer.inUse = true;
+      existingContainer.lastUsed = Date.now();
+      console.log(`[Pool] Reusing container for ${sessionId}:${language} - ${existingContainer.containerId.substring(0, 12)}`);
+      return existingContainer.containerId;
+    }
+
+    // No available container - create new one
+    console.log(`[Pool] Creating new container for ${sessionId}:${language}`);
+    const containerId = await this.createContainer(language, sessionId, networkName);
+
+    // Add to pool
+    const newContainer: SessionContainer = {
+      containerId,
+      language,
+      sessionId,
+      networkName,
+      lastUsed: Date.now(),
+      inUse: true,
+    };
+
+    sessionContainers.push(newContainer);
+    this.pool.set(sessionId, sessionContainers);
+
+    console.log(`[Pool] Created container ${containerId.substring(0, 12)} for ${sessionId}:${language}`);
+    return containerId;
+  }
+
+  /**
+   * Return container to pool after execution
+   * Updates lastUsed timestamp and marks as available
+   */
+  returnContainer(containerId: string, sessionId: string): void {
+    const sessionContainers = this.pool.get(sessionId);
+    if (!sessionContainers) {
+      console.warn(`[Pool] No containers found for session ${sessionId}`);
+      return;
+    }
+
+    const container = sessionContainers.find(c => c.containerId === containerId);
+    if (container) {
+      container.inUse = false;
+      container.lastUsed = Date.now();
+      console.log(`[Pool] Returned container ${containerId.substring(0, 12)} to pool (TTL refreshed)`);
+    }
+  }
+
+  /**
+   * Create a new container with networking
+   */
+  private async createContainer(
+    language: string,
+    sessionId: string,
+    networkName: string
+  ): Promise<string> {
+    const runtimeConfig = config.runtimes[language as keyof typeof config.runtimes];
+    
     try {
-      // Build docker run command with appropriate settings
-      // MySQL needs bridge network for its IPC, others can use none for security
-      const network = language === 'sql' ? 'bridge' : config.docker.network;
       const memory = language === 'sql' ? '256m' : config.docker.memory;
       
-      let dockerCmd = `docker run -d --label type=coderunner-worker --network ${network} --memory ${memory} --cpus ${config.docker.cpus}`;
+      let dockerCmd = [
+        'docker run -d',
+        `--label type=coderunner-session`,
+        `--label session=${sessionId}`,
+        `--label language=${language}`,
+        `--network ${networkName}`,
+        `--memory ${memory}`,
+        `--cpus ${config.docker.cpus}`,
+      ].join(' ');
       
       // MySQL needs special environment variables
       if (language === 'sql') {
@@ -64,135 +136,130 @@ class ContainerPool {
       }
 
       const { stdout } = await execAsync(dockerCmd);
-      
       const containerId = stdout.trim();
-      console.log(`Created ${language} container: ${containerId}`);
       
-      // For MySQL, wait longer for initialization
+      // For MySQL, wait for initialization
       if (language === 'sql') {
-        console.log(`Waiting for MySQL to initialize...`);
+        console.log(`[Pool] Waiting for MySQL to initialize...`);
         await new Promise(resolve => setTimeout(resolve, 10000));
-        console.log(`MySQL container ready`);
       }
 
       return containerId;
-    } catch (error) {
-      console.error(`Failed to create ${language} container:`, error);
-      return null;
+    } catch (error: any) {
+      console.error(`[Pool] Failed to create container:`, error.message);
+      throw error;
     }
   }
 
   /**
-   * Creates a new container and adds it to the pool
+   * Cleanup expired containers (TTL exceeded)
+   * Called by background job
    */
-  private async createContainer(language: string) {
-    const containerId = await this.createContainerDirect(language);
-    if (containerId) {
-      this.pool[language].push(containerId);
-    }
-  }
+  async cleanupExpiredContainers(): Promise<void> {
+    const now = Date.now();
+    const ttl = config.sessionContainers.ttl;
+    let cleanedCount = 0;
 
-  /**
-   * Get a container from the pool.
-   * Creates new containers on-demand if pool is empty.
-   * Handles concurrent requests properly.
-   */
-  async getContainer(language: string): Promise<string> {
-    // Check if pool has available container
-    if (this.pool[language].length > 0) {
-      const containerId = this.pool[language].shift()!;
-      console.log(`[Pool] Got ${language} container from pool: ${containerId.substring(0, 12)}`);
-      return containerId;
-    }
-    
-    // Pool is empty - create a new container on-demand
-    console.warn(`[Pool] Pool empty for ${language}, creating on-demand container...`);
-    
-    const containerId = await this.createContainerDirect(language);
-    
-    if (!containerId) {
-      throw new Error(`Failed to create ${language} container on-demand`);
-    }
-    
-    console.log(`[Pool] Created on-demand ${language} container: ${containerId.substring(0, 12)}`);
-    return containerId;
-  }
+    for (const [sessionId, containers] of this.pool.entries()) {
+      const expiredContainers = containers.filter(
+        c => !c.inUse && (now - c.lastUsed) > ttl
+      );
 
-  /**
-   * Return a container to the pool or delete it if pool is at max capacity
-   * This ensures we maintain exactly maxSize warm containers per language
-   */
-  returnOrDeleteContainer(language: string, containerId: string) {
-    // If pool has space, return the container
-    if (this.pool[language].length < this.maxSize) {
-      this.pool[language].push(containerId);
-      console.log(`[Pool] Returned ${language} container to pool: ${containerId.substring(0, 12)} (pool size: ${this.pool[language].length})`);
-    } else {
-      // Pool is at capacity, delete the container after 5 second delay
-      setTimeout(() => {
-        exec(`docker rm -fv ${containerId}`, (err) => {
-          if (err) {
-            console.error(`[Pool] Failed to delete container ${containerId.substring(0, 12)}:`, err.message);
-          } else {
-            console.log(`[Pool] Deleted excess container: ${containerId.substring(0, 12)}`);
+      if (expiredContainers.length > 0) {
+        console.log(`[Pool] Cleaning up ${expiredContainers.length} expired containers for session ${sessionId}`);
+        
+        for (const container of expiredContainers) {
+          try {
+            await execAsync(`docker rm -fv ${container.containerId}`);
+            cleanedCount++;
+            console.log(`[Pool] Deleted expired container ${container.containerId.substring(0, 12)} (unused for ${Math.floor((now - container.lastUsed) / 1000)}s)`);
+          } catch (error: any) {
+            console.error(`[Pool] Failed to delete container ${container.containerId.substring(0, 12)}:`, error.message);
           }
-        });
-      }, 5000);
-    }
-  }
+        }
 
-  /**
-   * Recycle the container and create a new one for the pool
-   * This is non-blocking - the new container is created asynchronously
-   * @deprecated Use returnOrDeleteContainer instead
-   */
-  recycleContainer(language: string, containerId: string) {
-    // Remove container with -v flag to also remove associated volumes
-    exec(`docker rm -fv ${containerId}`, (err) => {
-      if (err) console.error(`[Pool] Failed to remove container ${containerId.substring(0, 12)}:`, err.message);
-      else console.log(`[Pool] Removed container: ${containerId.substring(0, 12)}`);
-    });
-    
-    // Asynchronously replenish the pool
-    this.createContainer(language).then(() => {
-      console.log(`[Pool] Replenished ${language} pool (size: ${this.pool[language].length})`);
-    });
-  }
-
-  /**
-   * Get current pool status for monitoring
-   */
-  getStatus(): Record<string, number> {
-    const status: Record<string, number> = {};
-    for (const lang of Object.keys(this.pool)) {
-      status[lang] = this.pool[lang].length;
-    }
-    return status;
-  }
-
-  /**
-   * Cleanup all containers in the pool (and any orphans) and remove their volumes
-   */
-  async cleanup() {
-    console.log('Cleaning up container pool...');
-    
-    // 1. Clear in-memory pool
-    for (const lang of Object.keys(this.pool)) {
-      this.pool[lang] = [];
-    }
-
-    // 2. Force remove ALL containers labeled as coderunner-worker and their volumes
-    try {
-      const { stdout } = await execAsync('docker ps -aq --filter label=type=coderunner-worker');
-      if (stdout.trim()) {
-        await execAsync(`docker rm -fv ${stdout.trim().replace(/\n/g, ' ')}`);
+        // Remove from pool
+        const remainingContainers = containers.filter(
+          c => !expiredContainers.includes(c)
+        );
+        
+        if (remainingContainers.length > 0) {
+          this.pool.set(sessionId, remainingContainers);
+        } else {
+          this.pool.delete(sessionId);
+        }
       }
-    } catch (e) {
-      // Ignore error
     }
+
+    if (cleanedCount > 0) {
+      console.log(`[Pool] TTL cleanup completed: deleted ${cleanedCount} expired containers`);
+    }
+  }
+
+  /**
+   * Cleanup all containers for a specific session (on disconnect)
+   */
+  async cleanupSession(sessionId: string): Promise<void> {
+    const sessionContainers = this.pool.get(sessionId);
+    if (!sessionContainers || sessionContainers.length === 0) {
+      return;
+    }
+
+    console.log(`[Pool] Cleaning up ${sessionContainers.length} containers for session ${sessionId}`);
     
-    console.log('Container Pool Cleaned Up 🧹');
+    for (const container of sessionContainers) {
+      try {
+        await execAsync(`docker rm -fv ${container.containerId}`);
+        console.log(`[Pool] Deleted container ${container.containerId.substring(0, 12)}`);
+      } catch (error: any) {
+        console.error(`[Pool] Failed to delete container ${container.containerId.substring(0, 12)}:`, error.message);
+      }
+    }
+
+    this.pool.delete(sessionId);
+    console.log(`[Pool] Session ${sessionId} cleanup completed`);
+  }
+
+  /**
+   * Cleanup all containers (on server shutdown)
+   */
+  async cleanupAll(): Promise<void> {
+    console.log('[Pool] Cleaning up all session containers...');
+    
+    try {
+      const { stdout } = await execAsync('docker ps -aq --filter label=type=coderunner-session');
+      if (stdout.trim()) {
+        const containerIds = stdout.trim().split('\n');
+        console.log(`[Pool] Found ${containerIds.length} containers to clean up`);
+        await execAsync(`docker rm -fv ${stdout.trim().replace(/\n/g, ' ')}`);
+        console.log('[Pool] All session containers cleaned up');
+      }
+    } catch (error: any) {
+      console.error('[Pool] Failed to cleanup all containers:', error.message);
+    }
+
+    this.pool.clear();
+  }
+
+  /**
+   * Get pool statistics for monitoring
+   */
+  getStats(): { totalContainers: number; bySession: Record<string, number>; byLanguage: Record<string, number> } {
+    const bySession: Record<string, number> = {};
+    const byLanguage: Record<string, number> = {};
+    let totalContainers = 0;
+
+    for (const [sessionId, containers] of this.pool.entries()) {
+      bySession[sessionId] = containers.length;
+      totalContainers += containers.length;
+      
+      for (const container of containers) {
+        byLanguage[container.language] = (byLanguage[container.language] || 0) + 1;
+      }
+    }
+
+    return { totalContainers, bySession, byLanguage };
   }
 }
 
-export const containerPool = new ContainerPool();
+export const sessionPool = new SessionContainerPool();
