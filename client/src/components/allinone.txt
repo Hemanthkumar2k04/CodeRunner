@@ -1,0 +1,3265 @@
+import * as React from "react"
+import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog"
+
+import { cn } from "@/lib/utils"
+import { buttonVariants } from "@/components/ui/button"
+
+function AlertDialog({
+  ...props
+}: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
+  return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />
+}
+
+function AlertDialogTrigger({
+  ...props
+}: React.ComponentProps<typeof AlertDialogPrimitive.Trigger>) {
+  return (
+    <AlertDialogPrimitive.Trigger data-slot="alert-dialog-trigger" {...props} />
+  )
+}
+
+function AlertDialogPortal({
+  ...props
+}: React.ComponentProps<typeof AlertDialogPrimitive.Portal>) {
+  return (
+    <AlertDialogPrimitive.Portal data-slot="alert-dialog-portal" {...props} />
+  )
+}
+
+function AlertDialogOverlay({
+  className,
+  ...props
+}: React.ComponentProps<typeof AlertDialogPrimitive.Overlay>) {
+  return (
+    <AlertDialogPrimitive.Overlay
+      data-slot="alert-dialog-overlay"
+      className={cn(
+        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function AlertDialogContent({
+  className,
+  ...props
+}: React.ComponentProps<typeof AlertDialogPrimitive.Content>) {
+  return (
+    <AlertDialogPortal>
+      <AlertDialogOverlay />
+      <AlertDialogPrimitive.Content
+        data-slot="alert-dialog-content"
+        className={cn(
+          "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 sm:max-w-lg",
+          className
+        )}
+        {...props}
+      />
+    </AlertDialogPortal>
+  )
+}
+
+function AlertDialogHeader({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="alert-dialog-header"
+      className={cn("flex flex-col gap-2 text-center sm:text-left", className)}
+      {...props}
+    />
+  )
+}
+
+function AlertDialogFooter({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="alert-dialog-footer"
+      className={cn(
+        "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function AlertDialogTitle({
+  className,
+  ...props
+}: React.ComponentProps<typeof AlertDialogPrimitive.Title>) {
+  return (
+    <AlertDialogPrimitive.Title
+      data-slot="alert-dialog-title"
+      className={cn("text-lg font-semibold", className)}
+      {...props}
+    />
+  )
+}
+
+function AlertDialogDescription({
+  className,
+  ...props
+}: React.ComponentProps<typeof AlertDialogPrimitive.Description>) {
+  return (
+    <AlertDialogPrimitive.Description
+      data-slot="alert-dialog-description"
+      className={cn("text-muted-foreground text-sm", className)}
+      {...props}
+    />
+  )
+}
+
+function AlertDialogAction({
+  className,
+  ...props
+}: React.ComponentProps<typeof AlertDialogPrimitive.Action>) {
+  return (
+    <AlertDialogPrimitive.Action
+      className={cn(buttonVariants(), className)}
+      {...props}
+    />
+  )
+}
+
+function AlertDialogCancel({
+  className,
+  ...props
+}: React.ComponentProps<typeof AlertDialogPrimitive.Cancel>) {
+  return (
+    <AlertDialogPrimitive.Cancel
+      className={cn(buttonVariants({ variant: "outline" }), className)}
+      {...props}
+    />
+  )
+}
+
+export {
+  AlertDialog,
+  AlertDialogPortal,
+  AlertDialogOverlay,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+}
+import * as React from "react"
+import { cva, type VariantProps } from "class-variance-authority"
+
+import { cn } from "@/lib/utils"
+
+const alertVariants = cva(
+  "relative w-full rounded-lg border px-4 py-3 text-sm grid has-[>svg]:grid-cols-[calc(var(--spacing)*4)_1fr] grid-cols-[0_1fr] has-[>svg]:gap-x-3 gap-y-0.5 items-start [&>svg]:size-4 [&>svg]:translate-y-0.5 [&>svg]:text-current",
+  {
+    variants: {
+      variant: {
+        default: "bg-card text-card-foreground",
+        destructive:
+          "text-destructive bg-card [&>svg]:text-current *:data-[slot=alert-description]:text-destructive/90",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  }
+)
+
+function Alert({
+  className,
+  variant,
+  ...props
+}: React.ComponentProps<"div"> & VariantProps<typeof alertVariants>) {
+  return (
+    <div
+      data-slot="alert"
+      role="alert"
+      className={cn(alertVariants({ variant }), className)}
+      {...props}
+    />
+  )
+}
+
+function AlertTitle({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="alert-title"
+      className={cn(
+        "col-start-2 line-clamp-1 min-h-4 font-medium tracking-tight",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function AlertDescription({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="alert-description"
+      className={cn(
+        "text-muted-foreground col-start-2 grid justify-items-start gap-1 text-sm [&_p]:leading-relaxed",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+export { Alert, AlertTitle, AlertDescription }
+import * as React from "react"
+import { Slot } from "@radix-ui/react-slot"
+import { cva, type VariantProps } from "class-variance-authority"
+
+import { cn } from "@/lib/utils"
+
+const badgeVariants = cva(
+  "inline-flex items-center justify-center rounded-full border px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0 [&>svg]:size-3 gap-1 [&>svg]:pointer-events-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive transition-[color,box-shadow] overflow-hidden",
+  {
+    variants: {
+      variant: {
+        default:
+          "border-transparent bg-primary text-primary-foreground [a&]:hover:bg-primary/90",
+        secondary:
+          "border-transparent bg-secondary text-secondary-foreground [a&]:hover:bg-secondary/90",
+        destructive:
+          "border-transparent bg-destructive text-white [a&]:hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
+        outline:
+          "text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  }
+)
+
+function Badge({
+  className,
+  variant,
+  asChild = false,
+  ...props
+}: React.ComponentProps<"span"> &
+  VariantProps<typeof badgeVariants> & { asChild?: boolean }) {
+  const Comp = asChild ? Slot : "span"
+
+  return (
+    <Comp
+      data-slot="badge"
+      className={cn(badgeVariants({ variant }), className)}
+      {...props}
+    />
+  )
+}
+
+export { Badge, badgeVariants }
+import * as React from "react"
+import { Slot } from "@radix-ui/react-slot"
+import { cva, type VariantProps } from "class-variance-authority"
+
+import { cn } from "@/lib/utils"
+
+const buttonVariants = cva(
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        destructive:
+          "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
+        outline:
+          "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50",
+        secondary:
+          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        ghost:
+          "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+        link: "text-primary underline-offset-4 hover:underline",
+      },
+      size: {
+        default: "h-9 px-4 py-2 has-[>svg]:px-3",
+        sm: "h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5",
+        lg: "h-10 rounded-md px-6 has-[>svg]:px-4",
+        icon: "size-9",
+        "icon-sm": "size-8",
+        "icon-lg": "size-10",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  }
+)
+
+function Button({
+  className,
+  variant = "default",
+  size = "default",
+  asChild = false,
+  ...props
+}: React.ComponentProps<"button"> &
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean
+  }) {
+  const Comp = asChild ? Slot : "button"
+
+  return (
+    <Comp
+      data-slot="button"
+      data-variant={variant}
+      data-size={size}
+      className={cn(buttonVariants({ variant, size, className }))}
+      {...props}
+    />
+  )
+}
+
+export { Button, buttonVariants }
+import * as React from "react"
+import * as CheckboxPrimitive from "@radix-ui/react-checkbox"
+import { CheckIcon } from "lucide-react"
+
+import { cn } from "@/lib/utils"
+
+function Checkbox({
+  className,
+  ...props
+}: React.ComponentProps<typeof CheckboxPrimitive.Root>) {
+  return (
+    <CheckboxPrimitive.Root
+      data-slot="checkbox"
+      className={cn(
+        "peer border-input dark:bg-input/30 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground dark:data-[state=checked]:bg-primary data-[state=checked]:border-primary focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive size-4 shrink-0 rounded-[4px] border shadow-xs transition-shadow outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50",
+        className
+      )}
+      {...props}
+    >
+      <CheckboxPrimitive.Indicator
+        data-slot="checkbox-indicator"
+        className="grid place-content-center text-current transition-none"
+      >
+        <CheckIcon className="size-3.5" />
+      </CheckboxPrimitive.Indicator>
+    </CheckboxPrimitive.Root>
+  )
+}
+
+export { Checkbox }
+"use client"
+
+import * as React from "react"
+import * as ContextMenuPrimitive from "@radix-ui/react-context-menu"
+import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react"
+
+import { cn } from "@/lib/utils"
+
+function ContextMenu({
+  ...props
+}: React.ComponentProps<typeof ContextMenuPrimitive.Root>) {
+  return <ContextMenuPrimitive.Root data-slot="context-menu" {...props} />
+}
+
+function ContextMenuTrigger({
+  ...props
+}: React.ComponentProps<typeof ContextMenuPrimitive.Trigger>) {
+  return (
+    <ContextMenuPrimitive.Trigger data-slot="context-menu-trigger" {...props} />
+  )
+}
+
+function ContextMenuGroup({
+  ...props
+}: React.ComponentProps<typeof ContextMenuPrimitive.Group>) {
+  return (
+    <ContextMenuPrimitive.Group data-slot="context-menu-group" {...props} />
+  )
+}
+
+function ContextMenuPortal({
+  ...props
+}: React.ComponentProps<typeof ContextMenuPrimitive.Portal>) {
+  return (
+    <ContextMenuPrimitive.Portal data-slot="context-menu-portal" {...props} />
+  )
+}
+
+function ContextMenuSub({
+  ...props
+}: React.ComponentProps<typeof ContextMenuPrimitive.Sub>) {
+  return <ContextMenuPrimitive.Sub data-slot="context-menu-sub" {...props} />
+}
+
+function ContextMenuRadioGroup({
+  ...props
+}: React.ComponentProps<typeof ContextMenuPrimitive.RadioGroup>) {
+  return (
+    <ContextMenuPrimitive.RadioGroup
+      data-slot="context-menu-radio-group"
+      {...props}
+    />
+  )
+}
+
+function ContextMenuSubTrigger({
+  className,
+  inset,
+  children,
+  ...props
+}: React.ComponentProps<typeof ContextMenuPrimitive.SubTrigger> & {
+  inset?: boolean
+}) {
+  return (
+    <ContextMenuPrimitive.SubTrigger
+      data-slot="context-menu-sub-trigger"
+      data-inset={inset}
+      className={cn(
+        "focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground [&_svg:not([class*='text-'])]:text-muted-foreground flex cursor-default items-center rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        className
+      )}
+      {...props}
+    >
+      {children}
+      <ChevronRightIcon className="ml-auto" />
+    </ContextMenuPrimitive.SubTrigger>
+  )
+}
+
+function ContextMenuSubContent({
+  className,
+  ...props
+}: React.ComponentProps<typeof ContextMenuPrimitive.SubContent>) {
+  return (
+    <ContextMenuPrimitive.SubContent
+      data-slot="context-menu-sub-content"
+      className={cn(
+        "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-[8rem] origin-(--radix-context-menu-content-transform-origin) overflow-hidden rounded-md border p-1 shadow-lg",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function ContextMenuContent({
+  className,
+  ...props
+}: React.ComponentProps<typeof ContextMenuPrimitive.Content>) {
+  return (
+    <ContextMenuPrimitive.Portal>
+      <ContextMenuPrimitive.Content
+        data-slot="context-menu-content"
+        className={cn(
+          "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 max-h-(--radix-context-menu-content-available-height) min-w-[8rem] origin-(--radix-context-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md border p-1 shadow-md",
+          className
+        )}
+        {...props}
+      />
+    </ContextMenuPrimitive.Portal>
+  )
+}
+
+function ContextMenuItem({
+  className,
+  inset,
+  variant = "default",
+  ...props
+}: React.ComponentProps<typeof ContextMenuPrimitive.Item> & {
+  inset?: boolean
+  variant?: "default" | "destructive"
+}) {
+  return (
+    <ContextMenuPrimitive.Item
+      data-slot="context-menu-item"
+      data-inset={inset}
+      data-variant={variant}
+      className={cn(
+        "focus:bg-accent focus:text-accent-foreground data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 dark:data-[variant=destructive]:focus:bg-destructive/20 data-[variant=destructive]:focus:text-destructive data-[variant=destructive]:*:[svg]:!text-destructive [&_svg:not([class*='text-'])]:text-muted-foreground relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function ContextMenuCheckboxItem({
+  className,
+  children,
+  checked,
+  ...props
+}: React.ComponentProps<typeof ContextMenuPrimitive.CheckboxItem>) {
+  return (
+    <ContextMenuPrimitive.CheckboxItem
+      data-slot="context-menu-checkbox-item"
+      className={cn(
+        "focus:bg-accent focus:text-accent-foreground relative flex cursor-default items-center gap-2 rounded-sm py-1.5 pr-2 pl-8 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        className
+      )}
+      checked={checked}
+      {...props}
+    >
+      <span className="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center">
+        <ContextMenuPrimitive.ItemIndicator>
+          <CheckIcon className="size-4" />
+        </ContextMenuPrimitive.ItemIndicator>
+      </span>
+      {children}
+    </ContextMenuPrimitive.CheckboxItem>
+  )
+}
+
+function ContextMenuRadioItem({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof ContextMenuPrimitive.RadioItem>) {
+  return (
+    <ContextMenuPrimitive.RadioItem
+      data-slot="context-menu-radio-item"
+      className={cn(
+        "focus:bg-accent focus:text-accent-foreground relative flex cursor-default items-center gap-2 rounded-sm py-1.5 pr-2 pl-8 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        className
+      )}
+      {...props}
+    >
+      <span className="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center">
+        <ContextMenuPrimitive.ItemIndicator>
+          <CircleIcon className="size-2 fill-current" />
+        </ContextMenuPrimitive.ItemIndicator>
+      </span>
+      {children}
+    </ContextMenuPrimitive.RadioItem>
+  )
+}
+
+function ContextMenuLabel({
+  className,
+  inset,
+  ...props
+}: React.ComponentProps<typeof ContextMenuPrimitive.Label> & {
+  inset?: boolean
+}) {
+  return (
+    <ContextMenuPrimitive.Label
+      data-slot="context-menu-label"
+      data-inset={inset}
+      className={cn(
+        "text-foreground px-2 py-1.5 text-sm font-medium data-[inset]:pl-8",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function ContextMenuSeparator({
+  className,
+  ...props
+}: React.ComponentProps<typeof ContextMenuPrimitive.Separator>) {
+  return (
+    <ContextMenuPrimitive.Separator
+      data-slot="context-menu-separator"
+      className={cn("bg-border -mx-1 my-1 h-px", className)}
+      {...props}
+    />
+  )
+}
+
+function ContextMenuShortcut({
+  className,
+  ...props
+}: React.ComponentProps<"span">) {
+  return (
+    <span
+      data-slot="context-menu-shortcut"
+      className={cn(
+        "text-muted-foreground ml-auto text-xs tracking-widest",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+export {
+  ContextMenu,
+  ContextMenuTrigger,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuCheckboxItem,
+  ContextMenuRadioItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuShortcut,
+  ContextMenuGroup,
+  ContextMenuPortal,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
+  ContextMenuRadioGroup,
+}
+import * as React from "react"
+import * as DialogPrimitive from "@radix-ui/react-dialog"
+import { XIcon } from "lucide-react"
+
+import { cn } from "@/lib/utils"
+
+function Dialog({
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Root>) {
+  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+}
+
+function DialogTrigger({
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Trigger>) {
+  return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />
+}
+
+function DialogPortal({
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Portal>) {
+  return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
+}
+
+function DialogClose({
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Close>) {
+  return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
+}
+
+function DialogOverlay({
+  className,
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Overlay>) {
+  return (
+    <DialogPrimitive.Overlay
+      data-slot="dialog-overlay"
+      className={cn(
+        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function DialogContent({
+  className,
+  children,
+  showCloseButton = true,
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Content> & {
+  showCloseButton?: boolean
+}) {
+  return (
+    <DialogPortal data-slot="dialog-portal">
+      <DialogOverlay />
+      <DialogPrimitive.Content
+        data-slot="dialog-content"
+        className={cn(
+          "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 outline-none sm:max-w-lg",
+          className
+        )}
+        {...props}
+      >
+        {children}
+        {showCloseButton && (
+          <DialogPrimitive.Close
+            data-slot="dialog-close"
+            className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+          >
+            <XIcon />
+            <span className="sr-only">Close</span>
+          </DialogPrimitive.Close>
+        )}
+      </DialogPrimitive.Content>
+    </DialogPortal>
+  )
+}
+
+function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="dialog-header"
+      className={cn("flex flex-col gap-2 text-center sm:text-left", className)}
+      {...props}
+    />
+  )
+}
+
+function DialogFooter({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="dialog-footer"
+      className={cn(
+        "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function DialogTitle({
+  className,
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Title>) {
+  return (
+    <DialogPrimitive.Title
+      data-slot="dialog-title"
+      className={cn("text-lg leading-none font-semibold", className)}
+      {...props}
+    />
+  )
+}
+
+function DialogDescription({
+  className,
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Description>) {
+  return (
+    <DialogPrimitive.Description
+      data-slot="dialog-description"
+      className={cn("text-muted-foreground text-sm", className)}
+      {...props}
+    />
+  )
+}
+
+export {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogOverlay,
+  DialogPortal,
+  DialogTitle,
+  DialogTrigger,
+}
+import * as React from "react"
+
+import { cn } from "@/lib/utils"
+
+function Input({ className, type, ...props }: React.ComponentProps<"input">) {
+  return (
+    <input
+      type={type}
+      data-slot="input"
+      className={cn(
+        "file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-input h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+        "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
+        "aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+export { Input }
+"use client"
+
+import * as React from "react"
+import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area"
+
+import { cn } from "@/lib/utils"
+
+function ScrollArea({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof ScrollAreaPrimitive.Root>) {
+  return (
+    <ScrollAreaPrimitive.Root
+      data-slot="scroll-area"
+      className={cn("relative", className)}
+      {...props}
+    >
+      <ScrollAreaPrimitive.Viewport
+        data-slot="scroll-area-viewport"
+        className="focus-visible:ring-ring/50 size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:outline-1"
+      >
+        {children}
+      </ScrollAreaPrimitive.Viewport>
+      <ScrollBar />
+      <ScrollAreaPrimitive.Corner />
+    </ScrollAreaPrimitive.Root>
+  )
+}
+
+function ScrollBar({
+  className,
+  orientation = "vertical",
+  ...props
+}: React.ComponentProps<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>) {
+  return (
+    <ScrollAreaPrimitive.ScrollAreaScrollbar
+      data-slot="scroll-area-scrollbar"
+      orientation={orientation}
+      className={cn(
+        "flex touch-none p-px transition-colors select-none",
+        orientation === "vertical" &&
+          "h-full w-2.5 border-l border-l-transparent",
+        orientation === "horizontal" &&
+          "h-2.5 flex-col border-t border-t-transparent",
+        className
+      )}
+      {...props}
+    >
+      <ScrollAreaPrimitive.ScrollAreaThumb
+        data-slot="scroll-area-thumb"
+        className="bg-border relative flex-1 rounded-full"
+      />
+    </ScrollAreaPrimitive.ScrollAreaScrollbar>
+  )
+}
+
+export { ScrollArea, ScrollBar }
+"use client"
+
+import * as React from "react"
+import * as SeparatorPrimitive from "@radix-ui/react-separator"
+
+import { cn } from "@/lib/utils"
+
+function Separator({
+  className,
+  orientation = "horizontal",
+  decorative = true,
+  ...props
+}: React.ComponentProps<typeof SeparatorPrimitive.Root>) {
+  return (
+    <SeparatorPrimitive.Root
+      data-slot="separator"
+      decorative={decorative}
+      orientation={orientation}
+      className={cn(
+        "bg-border shrink-0 data-[orientation=horizontal]:h-px data-[orientation=horizontal]:w-full data-[orientation=vertical]:h-full data-[orientation=vertical]:w-px",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+export { Separator }
+import * as React from "react"
+import * as TabsPrimitive from "@radix-ui/react-tabs"
+
+import { cn } from "@/lib/utils"
+
+function Tabs({
+  className,
+  ...props
+}: React.ComponentProps<typeof TabsPrimitive.Root>) {
+  return (
+    <TabsPrimitive.Root
+      data-slot="tabs"
+      className={cn("flex flex-col gap-2", className)}
+      {...props}
+    />
+  )
+}
+
+function TabsList({
+  className,
+  ...props
+}: React.ComponentProps<typeof TabsPrimitive.List>) {
+  return (
+    <TabsPrimitive.List
+      data-slot="tabs-list"
+      className={cn(
+        "bg-muted text-muted-foreground inline-flex h-9 w-fit items-center justify-center rounded-lg p-[3px]",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function TabsTrigger({
+  className,
+  ...props
+}: React.ComponentProps<typeof TabsPrimitive.Trigger>) {
+  return (
+    <TabsPrimitive.Trigger
+      data-slot="tabs-trigger"
+      className={cn(
+        "data-[state=active]:bg-background dark:data-[state=active]:text-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:outline-ring dark:data-[state=active]:border-input dark:data-[state=active]:bg-input/30 text-foreground dark:text-muted-foreground inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap transition-[color,box-shadow] focus-visible:ring-[3px] focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:shadow-sm [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function TabsContent({
+  className,
+  ...props
+}: React.ComponentProps<typeof TabsPrimitive.Content>) {
+  return (
+    <TabsPrimitive.Content
+      data-slot="tabs-content"
+      className={cn("flex-1 outline-none", className)}
+      {...props}
+    />
+  )
+}
+
+export { Tabs, TabsList, TabsTrigger, TabsContent }
+import * as React from "react"
+import * as TooltipPrimitive from "@radix-ui/react-tooltip"
+
+import { cn } from "@/lib/utils"
+
+function TooltipProvider({
+  delayDuration = 0,
+  ...props
+}: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
+  return (
+    <TooltipPrimitive.Provider
+      data-slot="tooltip-provider"
+      delayDuration={delayDuration}
+      {...props}
+    />
+  )
+}
+
+function Tooltip({
+  ...props
+}: React.ComponentProps<typeof TooltipPrimitive.Root>) {
+  return (
+    <TooltipProvider>
+      <TooltipPrimitive.Root data-slot="tooltip" {...props} />
+    </TooltipProvider>
+  )
+}
+
+function TooltipTrigger({
+  ...props
+}: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
+  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
+}
+
+function TooltipContent({
+  className,
+  sideOffset = 0,
+  children,
+  ...props
+}: React.ComponentProps<typeof TooltipPrimitive.Content>) {
+  return (
+    <TooltipPrimitive.Portal>
+      <TooltipPrimitive.Content
+        data-slot="tooltip-content"
+        sideOffset={sideOffset}
+        className={cn(
+          "bg-foreground text-background animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 w-fit origin-(--radix-tooltip-content-transform-origin) rounded-md px-3 py-1.5 text-xs text-balance",
+          className
+        )}
+        {...props}
+      >
+        {children}
+        <TooltipPrimitive.Arrow className="bg-foreground fill-foreground z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px]" />
+      </TooltipPrimitive.Content>
+    </TooltipPrimitive.Portal>
+  )
+}
+
+export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }
+import { useEffect, useState } from 'react';
+import { Button } from './ui/button';
+import { Badge } from './ui/badge';
+import { Alert, AlertDescription } from './ui/alert';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
+import { AlertCircle, RefreshCw, LogOut, Server, Users, Box } from 'lucide-react';
+
+interface Container {
+  id: string;
+  image: string;
+  status: string;
+}
+
+interface AdminStatus {
+  containers: Container[];
+  poolStatus: Record<string, number>;
+  totalWarmContainers: number;
+  activeContainers: number;
+  connectedClients: number;
+  timestamp: number;
+}
+
+interface AdminDashboardProps {
+  token: string;
+  apiUrl: string;
+  onLogout: () => void;
+}
+
+export function AdminDashboard({ token, apiUrl, onLogout }: AdminDashboardProps) {
+  const [status, setStatus] = useState<AdminStatus | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  const fetchStatus = async () => {
+    setLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch(`${apiUrl}/api/admin/status`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          onLogout();
+          return;
+        }
+        throw new Error('Failed to fetch status');
+      }
+
+      const data = await response.json();
+      setStatus(data);
+      setLastUpdated(new Date());
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch status');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 5000); // Refresh every 5 seconds
+    return () => clearInterval(interval);
+  }, [token]);
+
+  const getStatusColor = (status: string) => {
+    if (status.includes('Up')) return 'bg-green-100 text-green-800';
+    if (status.includes('Exited')) return 'bg-red-100 text-red-800';
+    return 'bg-yellow-100 text-yellow-800';
+  };
+
+  const getLanguageFromImage = (image: string): string => {
+    const match = image.match(/(\w+)-runtime/);
+    return match ? match[1].toUpperCase() : image;
+  };
+
+  // Group containers by language
+  const groupedContainers = status?.containers.reduce((acc, container) => {
+    const lang = getLanguageFromImage(container.image);
+    if (!acc[lang]) acc[lang] = [];
+    acc[lang].push(container);
+    return acc;
+  }, {} as Record<string, Container[]>) || {};
+
+  return (
+    <div className="h-screen flex flex-col bg-background text-foreground">
+      {/* Header */}
+      <div className="border-b p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Admin Dashboard</h1>
+            <p className="text-sm text-muted-foreground">
+              System Status & Container Management
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={onLogout}>
+            <LogOut className="h-4 w-4 mr-2" />
+            Logout
+          </Button>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-auto p-6">
+        <div className="max-w-6xl mx-auto space-y-6">
+          {/* Error Alert */}
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {/* Refresh Button and Last Updated */}
+          <div className="flex items-center justify-between">
+            <Button 
+              onClick={fetchStatus} 
+              disabled={loading} 
+              variant="outline" 
+              size="sm"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            {lastUpdated && (
+              <p className="text-xs text-muted-foreground">
+                Last updated: {lastUpdated.toLocaleTimeString()}
+              </p>
+            )}
+          </div>
+
+          {status && (
+            <>
+              {/* Stats Overview */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Connected Clients Card */}
+                <div className="bg-card border rounded-lg p-6">
+                  <div className="flex items-center gap-3">
+                    <Users className="h-8 w-8 text-blue-600" />
+                    <div>
+                      <h2 className="text-sm font-medium text-muted-foreground">
+                        Connected Clients
+                      </h2>
+                      <p className="text-3xl font-bold mt-1">
+                        {status.connectedClients}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Warm Containers (Total in Pool) */}
+                <div className="bg-card border rounded-lg p-6">
+                  <div className="flex items-center gap-3">
+                    <Server className="h-8 w-8 text-purple-600" />
+                    <div>
+                      <h2 className="text-sm font-medium text-muted-foreground">
+                        Warm Containers
+                      </h2>
+                      <p className="text-3xl font-bold mt-1">
+                        {status.totalWarmContainers}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Active Containers (Currently Executing) */}
+                <div className="bg-card border rounded-lg p-6">
+                  <div className="flex items-center gap-3">
+                    <Box className="h-8 w-8 text-green-600" />
+                    <div>
+                      <h2 className="text-sm font-medium text-muted-foreground">
+                        Active Containers
+                      </h2>
+                      <p className="text-3xl font-bold mt-1">
+                        {status.activeContainers}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h2 className="text-xl font-semibold flex items-center gap-2">
+                  <Server className="h-5 w-5" />
+                  Container Pools
+                </h2>
+                
+                {status.containers.length === 0 ? (
+                  <div className="text-center py-12 border rounded-lg bg-card/50 border-dashed">
+                    <p className="text-muted-foreground">No containers running</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {Object.entries(groupedContainers).map(([lang, containers]) => (
+                      <Dialog key={lang}>
+                        <DialogTrigger asChild>
+                          <div className="bg-card border rounded-lg p-6 cursor-pointer hover:bg-accent/50 transition-all hover:shadow-md group">
+                            <div className="flex items-center justify-between mb-4">
+                              <h3 className="font-bold text-lg">{lang}</h3>
+                              <Badge variant="secondary" className="text-sm px-2 py-0.5">
+                                {containers.length}
+                              </Badge>
+                            </div>
+                            <div className="flex items-center justify-between text-sm text-muted-foreground">
+                              <span>Active: {containers.filter(c => c.status.includes('Up')).length}</span>
+                              <span className="group-hover:text-primary transition-colors">View Details →</span>
+                            </div>
+                          </div>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col">
+                          <DialogHeader>
+                            <DialogTitle className="flex items-center gap-2 text-xl">
+                              <Badge variant="outline" className="text-lg py-1">{lang}</Badge>
+                              Container Pool
+                            </DialogTitle>
+                          </DialogHeader>
+                          
+                          <div className="flex-1 overflow-y-auto pr-2 mt-4">
+                            <div className="space-y-3">
+                              {containers.map((container) => (
+                                <div
+                                  key={container.id}
+                                  className="flex items-center justify-between p-4 border rounded-lg bg-card/50 hover:bg-accent/20 transition-colors"
+                                >
+                                  <div className="flex-1 min-w-0 mr-4">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <span className="font-mono text-sm font-medium truncate select-all">
+                                        {container.id}
+                                      </span>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground font-mono">
+                                      {container.image}
+                                    </p>
+                                  </div>
+                                  <Badge className={`flex-shrink-0 ${getStatusColor(container.status)}`}>
+                                    {container.status}
+                                  </Badge>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {loading && !status && (
+            <div className="flex items-center justify-center py-12">
+              <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+import { useState } from 'react';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { AlertCircle } from 'lucide-react';
+
+interface AdminLoginProps {
+  isOpen: boolean;
+  onLoginSuccess: (token: string) => void;
+  apiUrl: string;
+}
+
+export function AdminLogin({ isOpen, onLoginSuccess, apiUrl }: AdminLoginProps) {
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      const response = await fetch(`${apiUrl}/api/admin/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Invalid password');
+      }
+
+      const data = await response.json();
+      localStorage.setItem('adminToken', data.token);
+      onLoginSuccess(data.token);
+      setPassword('');
+    } catch (err: any) {
+      setError(err.message || 'Login failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={isOpen}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Admin Login</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleLogin} className="space-y-4">
+          {error && (
+            <div className="flex items-center gap-2 p-3 bg-red-50 text-red-800 rounded-md text-sm">
+              <AlertCircle className="h-4 w-4" />
+              {error}
+            </div>
+          )}
+          <Input
+            type="password"
+            placeholder="Enter admin password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={loading}
+            autoFocus
+          />
+          <Button type="submit" disabled={loading} className="w-full">
+            {loading ? 'Logging in...' : 'Login'}
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+import { useEffect, useState } from 'react';
+import { ThemeProvider } from './theme-provider';
+import { AdminLogin } from './AdminLogin';
+import { AdminDashboard } from './AdminDashboard';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
+export function AdminPage() {
+  const [token, setToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Check for existing token in localStorage
+    const savedToken = localStorage.getItem('adminToken');
+    if (savedToken) {
+      // Verify token is still valid
+      fetch(`${API_URL}/api/admin/status`, {
+        headers: { Authorization: `Bearer ${savedToken}` },
+      })
+        .then(res => {
+          if (res.ok) {
+            setToken(savedToken);
+          } else {
+            localStorage.removeItem('adminToken');
+          }
+        })
+        .catch(() => {
+          localStorage.removeItem('adminToken');
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    } else {
+      setLoading(false);
+    }
+  }, []);
+
+  const handleLogout = () => {
+    setToken(null);
+    localStorage.removeItem('adminToken');
+  };
+
+  if (loading) {
+    return (
+      <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+        <div className="h-screen flex items-center justify-center bg-background">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border border-primary border-t-transparent mx-auto mb-4" />
+            <p className="text-muted-foreground">Loading...</p>
+          </div>
+        </div>
+      </ThemeProvider>
+    );
+  }
+
+  return (
+    <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+      {!token ? (
+        <div className="h-screen flex items-center justify-center bg-background">
+          <div className="w-full max-w-sm">
+            <div className="mb-6 text-center">
+              <h1 className="text-2xl font-bold">CodeRunner Admin</h1>
+              <p className="text-muted-foreground mt-2">Access the admin dashboard</p>
+            </div>
+            <AdminLogin
+              isOpen={!token}
+              onLoginSuccess={setToken}
+              apiUrl={API_URL}
+            />
+          </div>
+        </div>
+      ) : (
+        <AdminDashboard token={token} apiUrl={API_URL} onLogout={handleLogout} />
+      )}
+    </ThemeProvider>
+  );
+}
+import { useCallback } from 'react';
+import Editor, { type Monaco } from '@monaco-editor/react';
+import { useTheme } from './theme-provider';
+import { useEditorStore } from '@/stores/useEditorStore';
+import type { EditorState } from '@/stores/useEditorStore';
+import { getMonacoLanguage, getLanguageFromExtension, formatBytes, getFileSize } from '@/lib/file-utils';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { FileIcon } from '@/components/FileIcon';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
+import { X, Play, Code2, Info, Square } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface CodeEditorProps {
+  onRunClick: () => void;
+  onStopClick: () => void;
+}
+
+export function CodeEditor({ onRunClick, onStopClick }: CodeEditorProps) {
+  const { theme } = useTheme();
+  const files = useEditorStore((state: EditorState) => state.files);
+  const activeFileId = useEditorStore((state: EditorState) => state.activeFileId);
+  const openTabs = useEditorStore((state: EditorState) => state.openTabs);
+  const consoles = useEditorStore((state: EditorState) => state.consoles);
+  const setActiveFile = useEditorStore((state: EditorState) => state.setActiveFile);
+  const closeTab = useEditorStore((state: EditorState) => state.closeTab);
+  const updateContent = useEditorStore((state: EditorState) => state.updateContent);
+  const markAsSaved = useEditorStore((state: EditorState) => state.markAsSaved);
+
+  const activeFile = activeFileId ? files[activeFileId] : null;
+  const activeConsole = activeFileId ? consoles[activeFileId] : null;
+  const isRunning = activeConsole?.isRunning || false;
+  const language = activeFile ? getMonacoLanguage(activeFile.name) : 'plaintext';
+  const execLanguage = activeFile ? getLanguageFromExtension(activeFile.name) : null;
+
+  const handleEditorWillMount = useCallback((monaco: Monaco) => {
+    // Ensure all necessary languages are registered and available
+    // This fixes issues with language support like Java syntax highlighting
+    const languages = ['java', 'python', 'javascript', 'cpp', 'c'];
+    languages.forEach((lang) => {
+      if (!monaco.languages.getLanguages().find((l: { id: string }) => l.id === lang)) {
+        monaco.languages.register({ id: lang });
+      }
+    });
+  }, []);
+
+  const handleTabClick = useCallback((tabId: string) => {
+      setActiveFile(tabId);
+    }, [setActiveFile]);
+
+  const handleTabClose = useCallback((tabId: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      closeTab(tabId);
+    },
+    [closeTab]
+  );
+
+  const handleEditorChange = useCallback((value: string | undefined) => {
+      if (activeFileId && value !== undefined) {
+        const result = updateContent(activeFileId, value);
+        if (!result.success) {
+          console.warn(result.error);
+        }
+      }
+    }, [activeFileId, updateContent]);
+
+  const handleSave = useCallback(() => {
+    if (activeFileId) {
+      markAsSaved(activeFileId);
+    }
+  }, [activeFileId, markAsSaved]);
+
+  const handleRunClick = useCallback(() => {
+    if (isRunning) {
+      // Stop execution if already running
+      onStopClick();
+    } else {
+      // Save the file first if it's modified
+      if (activeFile?.isModified) {
+        handleSave();
+      }
+      // Then run the code
+      onRunClick();
+    }
+  }, [activeFile?.isModified, handleSave, onRunClick, onStopClick, isRunning]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        handleSave();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        if (activeFile && execLanguage && !isRunning) {
+          handleRunClick();
+        }
+      }
+    }, [handleSave, activeFile, execLanguage, isRunning, handleRunClick]);
+
+  // Empty state when no file is open
+  if (openTabs.length === 0) {
+    return (
+      <div className="h-full w-full bg-background flex flex-col items-center justify-center text-muted-foreground p-8">
+        <div className="max-w-md text-center space-y-6">
+          <div className="inline-flex p-6 rounded-2xl bg-muted/30 border-2 border-dashed border-border">
+            <Code2 className="h-16 w-16 opacity-30" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-semibold text-foreground">No file open</h2>
+            <p className="text-base">Create a new file to start coding</p>
+          </div>
+          <div className="flex items-center gap-2 text-sm opacity-70 justify-center">
+            <Info className="h-4 w-4" />
+            <span>Use the Explorer panel on the left to create files</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <TooltipProvider>
+      <div className="h-full w-full bg-background flex flex-col overflow-hidden" onKeyDown={handleKeyDown}>
+        {/* Tab bar - Redesigned */}
+        <div className="flex items-stretch border-b bg-muted/20 shrink-0">
+          {/* Tabs Section */}
+          <ScrollArea className="flex-1 max-w-4xl">
+            <div className="flex items-stretch h-12">
+              {openTabs.map((tabId: string) => {
+                const file = files[tabId];
+                if (!file) return null;
+                const isActive = tabId === activeFileId;
+                return (
+                  <div
+                    key={tabId}
+                    className={cn(
+                      'group relative flex items-center gap-2.5 px-4 border-r cursor-pointer transition-all min-w-0',
+                      'hover:bg-muted/60',
+                      isActive
+                        ? 'bg-background shadow-sm'
+                        : 'bg-transparent'
+                    )}
+                    onClick={() => handleTabClick(tabId)}
+                  >
+                    {/* Active indicator */}
+                    {isActive && (
+                      <div className="absolute inset-x-0 top-0 h-0.5 bg-primary" />
+                    )}
+                    
+                    <FileIcon filename={file.name} size={16} className="shrink-0" />
+                    <span className={cn(
+                      "truncate text-sm max-w-[140px]",
+                      isActive ? "font-medium" : "font-normal"
+                    )}>
+                      {file.name}
+                    </span>
+                    {file.isModified && (
+                      <span className="text-orange-400 text-base leading-none">●</span>
+                    )}
+                    <button
+                      className={cn(
+                        'ml-auto p-1 rounded-md hover:bg-muted-foreground/20 transition-opacity',
+                        'opacity-0 group-hover:opacity-100',
+                        isActive && 'opacity-70 hover:opacity-100'
+                      )}
+                      onClick={(e) => handleTabClose(tabId, e)}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <ScrollBar orientation="horizontal" />
+          </ScrollArea>
+
+          {/* Info and Controls Section */}
+          <div className="flex items-center gap-3 px-4 border-l bg-muted/10 ml-auto">
+            {activeFile && (
+              <>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="text-xs font-medium px-2 py-0.5">
+                    {language}
+                  </Badge>
+                  <div className="h-4 w-px bg-border" />
+                  <span className="text-xs text-muted-foreground font-mono">
+                    {formatBytes(getFileSize(activeFile.content))}
+                  </span>
+                </div>
+                <div className="h-4 w-px bg-border" />
+              </>
+            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="sm"
+                  className={cn(
+                    "gap-2 h-8 px-4",
+                    isRunning && "bg-destructive hover:bg-destructive/90"
+                  )}
+                  onClick={handleRunClick}
+                  disabled={!activeFile || !execLanguage}
+                >
+                  {isRunning ? (
+                    <>
+                      <Square className="h-4 w-4 fill-current" />
+                      <span className="font-medium">Stop</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play className="h-4 w-4 fill-current" />
+                      <span className="font-medium">Run</span>
+                    </>
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {!activeFile
+                  ? 'Open a file to run'
+                  : !execLanguage
+                  ? 'Unsupported language'
+                  : isRunning
+                  ? 'Stop execution'
+                  : 'Run code (Ctrl+Enter)'}
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        </div>
+
+        {/* Editor */}
+        <div className="flex-1 min-h-0">
+          <Editor
+            height="100%"
+            language={language}
+            value={activeFile?.content ?? ''}
+            onChange={handleEditorChange}
+            theme={theme === 'dark' ? 'vs-dark' : 'light'}
+            beforeMount={handleEditorWillMount}
+            options={{
+              minimap: { enabled: false },
+              fontSize: 14,
+              padding: { top: 16 },
+              wordWrap: 'on',
+              automaticLayout: true,
+              scrollBeyondLastLine: false,
+              tabSize: 2,
+            }}
+          />
+        </div>
+      </div>
+    </TooltipProvider>
+  );
+}import { useEffect, useRef, useState, useCallback } from 'react';
+import AnsiToHtml from 'ansi-to-html';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { useEditorStore, MAX_OUTPUT_ENTRIES_PER_CONSOLE } from '@/stores/useEditorStore';
+import type { EditorState } from '@/stores/useEditorStore';
+import { useSocket } from '@/hooks/useSocket';
+import { useTheme } from './theme-provider';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { Trash2, ArrowDownToLine, Send, Terminal as TerminalIcon, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+// ANSI to HTML converter instances for light and dark themes
+const darkAnsiConverter = new AnsiToHtml({
+  fg: '#d4d4d4',
+  bg: 'transparent',
+  newline: true,
+  escapeXML: true,
+  colors: {
+    0: '#1e1e1e',
+    1: '#f87171',
+    2: '#4ade80',
+    3: '#facc15',
+    4: '#60a5fa',
+    5: '#c084fc',
+    6: '#22d3ee',
+    7: '#d4d4d4',
+    8: '#737373',
+    9: '#fca5a5',
+    10: '#86efac',
+    11: '#fde047',
+    12: '#93c5fd',
+    13: '#d8b4fe',
+    14: '#67e8f9',
+    15: '#ffffff',
+  },
+});
+
+const lightAnsiConverter = new AnsiToHtml({
+  fg: '#1e1e1e',
+  bg: 'transparent',
+  newline: true,
+  escapeXML: true,
+  colors: {
+    0: '#ffffff',
+    1: '#dc2626',
+    2: '#16a34a',
+    3: '#ca8a04',
+    4: '#2563eb',
+    5: '#9333ea',
+    6: '#0891b2',
+    7: '#1e1e1e',
+    8: '#737373',
+    9: '#ef4444',
+    10: '#22c55e',
+    11: '#eab308',
+    12: '#3b82f6',
+    13: '#a855f7',
+    14: '#06b6d4',
+    15: '#000000',
+  },
+});
+
+interface ConsoleProps {
+  isMinimized: boolean;
+  onToggleMinimize: () => void;
+}
+
+export function Console({ isMinimized, onToggleMinimize }: ConsoleProps) {
+  const { theme } = useTheme();
+  const consoles = useEditorStore((state: EditorState) => state.consoles);
+  const activeConsoleId = useEditorStore((state: EditorState) => state.activeConsoleId);
+  const setActiveConsole = useEditorStore((state: EditorState) => state.setActiveConsole);
+  const clearConsole = useEditorStore((state: EditorState) => state.clearConsole);
+  const deleteConsole = useEditorStore((state: EditorState) => state.deleteConsole);
+  const { sendInput } = useSocket();
+  const [inputValue, setInputValue] = useState('');
+  const [autoScroll, setAutoScroll] = useState(true);
+  const scrollingRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+
+  // Select the appropriate ANSI converter based on theme
+  const ansiConverter = theme === 'dark' ? darkAnsiConverter : lightAnsiConverter;
+
+  // Get the current active console
+  const activeConsole = activeConsoleId ? consoles[activeConsoleId] : null;
+  const consoleArray = Object.values(consoles).sort((a, b) => a.createdAt - b.createdAt);
+
+  // If no console is active but consoles exist, set the first one as active
+  useEffect(() => {
+    if (!activeConsoleId && consoleArray.length > 0) {
+      setActiveConsole(consoleArray[0].fileId);
+    }
+  }, [activeConsoleId, consoleArray.length, setActiveConsole]);
+
+  // Virtual list configuration for each console
+  // Virtual list configuration - only for active console to avoid hook violations
+  // We only need virtualization for the visible console anyway
+  const rowVirtualizer = useVirtualizer({
+    count: activeConsole?.output.length || 0,
+    getScrollElement: () => activeConsoleId ? scrollingRefs.current[activeConsoleId] : null,
+    estimateSize: useCallback(() => 28, []),
+    overscan: 10,
+    measureElement:
+      typeof window !== 'undefined' && 'ResizeObserver' in window
+        ? (element) => element?.getBoundingClientRect().height
+        : undefined,
+  });
+
+  // Auto-scroll to bottom when new output arrives in active console
+  useEffect(() => {
+    if (autoScroll && !isMinimized && activeConsole && activeConsole.output.length > 0) {
+      setTimeout(() => {
+        const ref = scrollingRefs.current[activeConsole.fileId];
+        if (ref) {
+          ref.scrollTop = ref.scrollHeight;
+        }
+      }, 0);
+    }
+  }, [activeConsole?.output.length, autoScroll, isMinimized, activeConsole?.fileId]);
+
+  const handleSendInput = useCallback(() => {
+    if (inputValue.trim() && activeConsole?.isRunning) {
+      sendInput(inputValue + '\n');
+      setInputValue('');
+    }
+  }, [inputValue, activeConsole?.isRunning, sendInput]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleSendInput();
+      }
+    },
+    [handleSendInput]
+  );
+
+  const handleClearConsole = useCallback(() => {
+    if (activeConsoleId) {
+      clearConsole(activeConsoleId);
+    }
+  }, [activeConsoleId, clearConsole]);
+
+  const handleCloseConsole = useCallback((fileId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    deleteConsole(fileId);
+  }, [deleteConsole]);
+
+  const renderOutput = (text: string, type: 'stdout' | 'stderr' | 'system') => {
+    const html = ansiConverter.toHtml(text);
+    return (
+      <span
+        className={cn(
+          type === 'stderr' && 'text-red-600 dark:text-red-400',
+          type === 'system' && 'text-blue-600 dark:text-blue-400 italic'
+        )}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    );
+  };
+
+  // Calculate buffer usage for active console
+  const outputUsagePercent = activeConsole 
+    ? Math.round((activeConsole.output.length / MAX_OUTPUT_ENTRIES_PER_CONSOLE) * 100)
+    : 0;
+  const isNearCapacity = outputUsagePercent > 80;
+
+  return (
+    <TooltipProvider>
+      <div className={cn(
+        "h-full w-full flex flex-col border-t overflow-hidden",
+        "bg-background text-foreground"
+      )}>
+        {/* Console header - Minimizable */}
+        <div 
+          className={cn(
+            "flex items-center justify-between px-4 py-3 border-b shrink-0 cursor-pointer select-none",
+            "bg-muted/20 hover:bg-muted/30 transition-colors"
+          )}
+          onClick={onToggleMinimize}
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-1.5 rounded-lg bg-blue-500/10">
+              <TerminalIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div className="flex items-center gap-2.5">
+              <span className="text-sm font-semibold">Console</span>
+              {consoleArray.length > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  ({consoleArray.length} {consoleArray.length === 1 ? 'console' : 'consoles'})
+                </span>
+              )}
+              {activeConsole?.isRunning && (
+                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/20">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                  </span>
+                  <span className="text-xs font-medium text-green-600 dark:text-green-400">Running</span>
+                </div>
+              )}
+              {isNearCapacity && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-yellow-500/10 border border-yellow-500/20">
+                      <span className="text-xs font-medium text-yellow-600 dark:text-yellow-400">
+                        {outputUsagePercent}% capacity
+                      </span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Output buffer approaching limit ({activeConsole?.output.length.toLocaleString()} / {MAX_OUTPUT_ENTRIES_PER_CONSOLE.toLocaleString()} entries)
+                  </TooltipContent>
+                </Tooltip>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {!isMinimized && (
+              <>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={cn(
+                        'h-8 w-8 transition-all',
+                        autoScroll && 'text-blue-600 dark:text-blue-400 bg-blue-500/10'
+                      )}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setAutoScroll(!autoScroll);
+                      }}
+                    >
+                      <ArrowDownToLine className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {autoScroll ? 'Auto-scroll enabled' : 'Auto-scroll disabled'}
+                  </TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleClearConsole();
+                      }}
+                      disabled={!activeConsoleId}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Clear active console</TooltipContent>
+                </Tooltip>
+              </>
+            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleMinimize();
+                  }}
+                >
+                  {isMinimized ? (
+                    <ChevronUp className="h-4 w-4" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {isMinimized ? 'Expand console' : 'Minimize console'}
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        </div>
+
+        {/* Console content - Only show when not minimized */}
+        {!isMinimized && (
+          <>
+            {consoleArray.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center py-12 space-y-4">
+                <div className="inline-flex p-4 rounded-xl bg-muted/30 border-2 border-dashed border-border">
+                  <TerminalIcon className="h-10 w-10 text-muted-foreground" />
+                </div>
+                <div className="text-center space-y-1">
+                  <p className="text-muted-foreground font-medium">No consoles yet</p>
+                  <p className="text-xs text-muted-foreground/70">Run a file to create a console</p>
+                </div>
+              </div>
+            ) : (
+              <Tabs 
+                value={activeConsoleId || undefined} 
+                onValueChange={setActiveConsole}
+                className="flex-1 flex flex-col min-h-0"
+              >
+                {/* Console tabs */}
+                <TabsList className="w-full justify-start rounded-none border-b bg-muted/20 h-auto p-0">
+                  {consoleArray.map((console) => (
+                    <TabsTrigger
+                      key={console.fileId}
+                      value={console.fileId}
+                      className="relative rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:bg-muted/30 px-3 py-2 gap-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm max-w-[150px] truncate">{console.filePath}</span>
+                        {console.executionTime !== null && (
+                          <span className="text-xs text-green-800 dark:text-green-300 font-mono bg-green-200/70 dark:bg-green-900/60 px-1.5 py-0.5 rounded">
+                            {console.executionTime}ms
+                          </span>
+                        )}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-4 w-4 p-0 hover:bg-destructive/10"
+                        onClick={(e) => handleCloseConsole(console.fileId, e)}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+
+                {/* Console content for each tab */}
+                {consoleArray.map((console) => {
+                  const isActive = console.fileId === activeConsoleId;
+                  return (
+                    <TabsContent
+                      key={console.fileId}
+                      value={console.fileId}
+                      className="flex-1 min-h-0 m-0 data-[state=active]:flex data-[state=active]:flex-col"
+                    >
+                      {/* Output area */}
+                      <div
+                        ref={(el) => { scrollingRefs.current[console.fileId] = el; }}
+                        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden font-mono text-sm"
+                      >
+                        {console.output.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center py-12 space-y-4">
+                            <div className="text-center space-y-1">
+                              <p className="text-muted-foreground font-medium">Output will appear here</p>
+                              <p className="text-xs text-muted-foreground/70">Run your code to see results</p>
+                            </div>
+                          </div>
+                        ) : isActive && rowVirtualizer ? (
+                          <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
+                            {rowVirtualizer.getVirtualItems().map((virtualItem: any) => {
+                              const entry = console.output[virtualItem.index];
+                              return (
+                                <div
+                                  key={`${entry.timestamp}-${virtualItem.index}`}
+                                  data-index={virtualItem.index}
+                                  ref={rowVirtualizer.measureElement}
+                                  style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    width: '100%',
+                                    transform: `translateY(${virtualItem.start}px)`,
+                                  }}
+                                  className="px-4 py-1 leading-relaxed whitespace-pre-wrap break-words"
+                                >
+                                  {renderOutput(entry.data, entry.type)}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : !isActive ? null : (
+                          // Fallback for non-virtualized display (if virtualizer fails)
+                          <div className="px-4 py-1">
+                            {console.output.map((entry, idx) => (
+                              <div
+                                key={`${entry.timestamp}-${idx}`}
+                                className="leading-relaxed whitespace-pre-wrap break-words"
+                              >
+                                {renderOutput(entry.data, entry.type)}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Input area */}
+                      <div className="flex items-center gap-3 p-3 border-t bg-muted/20 shrink-0">
+                        <div className="flex items-center gap-2 px-3 py-2 bg-background border rounded-lg flex-1">
+                          <span className="text-green-600 dark:text-green-400 text-sm font-bold">❯</span>
+                          <Input
+                            value={inputValue}
+                            onChange={(e) => setInputValue(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            placeholder={console.isRunning ? 'Type input and press Enter...' : 'Run code to enable input'}
+                            disabled={!console.isRunning}
+                            className="flex-1 bg-transparent border-0 placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 h-auto p-0"
+                          />
+                        </div>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className={cn(
+                                "h-9 w-9 rounded-lg transition-all",
+                                console.isRunning && inputValue.trim() 
+                                  ? "text-blue-600 dark:text-blue-400 hover:bg-blue-500/10" 
+                                  : "text-muted-foreground"
+                              )}
+                              onClick={handleSendInput}
+                              disabled={!console.isRunning || !inputValue.trim()}
+                            >
+                              <Send className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Send input (Enter)</TooltipContent>
+                        </Tooltip>
+                      </div>
+                    </TabsContent>
+                  );
+                })}
+              </Tabs>
+            )}
+          </>
+        )}
+      </div>
+    </TooltipProvider>
+  );
+}import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useEditorStore, type FileNode } from '@/stores/useEditorStore';
+import type { EditorState } from '@/stores/useEditorStore';
+import { useSocket } from '@/hooks/useSocket';
+import {
+  getLanguageFromExtension,
+  formatBytes,
+  getFileSize,
+  flattenTree,
+  isLanguageSupported,
+  isDataFile,
+} from '@/lib/file-utils';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Checkbox } from '@/components/ui/checkbox';
+import { FileIcon } from '@/components/FileIcon';
+import { Play, Loader2, AlertCircle, CheckCircle2, File, Database } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface DependencyResolverProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+export function DependencyResolver({ open, onOpenChange }: DependencyResolverProps) {
+  const files = useEditorStore((state: EditorState) => state.files);
+  const rootIds = useEditorStore((state: EditorState) => state.rootIds);
+  const activeFileId = useEditorStore((state: EditorState) => state.activeFileId);
+  const consoles = useEditorStore((state: EditorState) => state.consoles);
+  const selectedFilesForRun = useEditorStore((state: EditorState) => state.selectedFilesForRun);
+  const setSelectedFilesForRun = useEditorStore((state: EditorState) => state.setSelectedFilesForRun);
+  const { runCode } = useSocket();
+
+  const [localSelected, setLocalSelected] = useState<Set<string>>(new Set());
+
+  const activeFile = activeFileId ? files[activeFileId] : null;
+  const activeConsole = activeFileId ? consoles[activeFileId] : null;
+  const isRunning = activeConsole?.isRunning || false;
+  const activeLanguage = activeFile ? getLanguageFromExtension(activeFile.name) : null;
+  
+  // Get all files (non-folders) from the tree
+  const allFiles = flattenTree(files, rootIds);
+  
+  // Filter to files matching the active file's language OR data files
+  const compatibleFiles = useMemo(() => {
+    return allFiles.filter((f) => {
+      // Always include data files
+      if (isDataFile(f.name)) {
+        return true;
+      }
+      // Include source files of the same language
+      const lang = getLanguageFromExtension(f.name);
+      return lang === activeLanguage;
+    });
+  }, [allFiles, activeLanguage]);
+
+  // Separate data files from source files
+  const dataFiles = useMemo(() => compatibleFiles.filter(f => isDataFile(f.name)), [compatibleFiles]);
+  const sourceFiles = useMemo(() => compatibleFiles.filter(f => !isDataFile(f.name)), [compatibleFiles]);
+
+  // Initialize selection when dialog opens
+  useEffect(() => {
+    if (open && activeFileId) {
+      // Start with the active file selected
+      const initial = new Set<string>([activeFileId]);
+      // Always add all data files
+      allFiles.forEach((f) => {
+        if (isDataFile(f.name)) {
+          initial.add(f.id);
+        }
+      });
+      // Add previously selected source files that are still compatible
+      selectedFilesForRun.forEach((id: string) => {
+        const file = allFiles.find((f) => f.id === id);
+        if (file && !isDataFile(file.name) && getLanguageFromExtension(file.name) === activeLanguage) {
+          initial.add(id);
+        }
+      });
+      setLocalSelected(initial);
+    }
+  }, [open, activeFileId, allFiles, selectedFilesForRun, activeLanguage]);
+
+  const toggleFile = useCallback((fileId: string) => {
+    // Don't allow deselecting the entry point (active file)
+    if (fileId === activeFileId) return;
+
+    setLocalSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(fileId)) {
+        next.delete(fileId);
+      } else {
+        next.add(fileId);
+      }
+      return next;
+    });
+  }, [activeFileId]);
+
+  const selectAll = useCallback(() => {
+    const ids = compatibleFiles.map((f) => f.id);
+    setLocalSelected(new Set(ids));
+  }, [compatibleFiles]);
+
+  const selectNone = useCallback(() => {
+    // Keep only the active file selected
+    setLocalSelected(new Set(activeFileId ? [activeFileId] : []));
+  }, [activeFileId]);
+
+  const handleRunWithSelection = useCallback(() => {
+    if (!activeFile || !activeLanguage || !isLanguageSupported(activeLanguage) || !activeFileId) {
+      return;
+    }
+
+    // Build the files array for execution
+    const filesToRun = Array.from(localSelected)
+      .map((id) => files[id])
+      .filter((f): f is FileNode => f !== undefined && !f.isFolder)
+      .map((f) => ({
+        name: f.name,
+        path: f.path,
+        content: f.content,
+        toBeExec: f.id === activeFileId,
+      }));
+
+    if (filesToRun.length === 0) {
+      // Console not available here, will show error in console when created
+      return;
+    }
+
+    // Ensure there's exactly one entry point
+    const entryPointCount = filesToRun.filter((f) => f.toBeExec).length;
+    if (entryPointCount !== 1) {
+      // Console not available here, will show error in console when created
+      return;
+    }
+
+    // Save selection to store
+    setSelectedFilesForRun(Array.from(localSelected));
+
+    // Close dialog and run
+    onOpenChange(false);
+    runCode(activeFileId, activeFile.path, filesToRun, activeLanguage);
+  }, [
+    activeFile,
+    activeFileId,
+    activeLanguage,
+    localSelected,
+    files,
+    setSelectedFilesForRun,
+    onOpenChange,
+    runCode,
+  ]);
+
+  if (!activeFile || !activeLanguage) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cannot Run Code</DialogTitle>
+            <DialogDescription>
+              Please open a supported file (Python, JavaScript, Java, or C++) to run code.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => onOpenChange(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  const totalSize = Array.from(localSelected)
+    .map((id) => files[id])
+    .filter((f): f is FileNode => f !== undefined)
+    .reduce((sum, f) => sum + getFileSize(f.content), 0);
+
+  const selectedCount = localSelected.size;
+  const totalCount = compatibleFiles.length;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="text-xl">Select Files to Run</DialogTitle>
+          <DialogDescription className="text-base">
+            Choose which files to include when running your code. The entry point file is always included.
+          </DialogDescription>
+        </DialogHeader>
+
+        {compatibleFiles.length === 0 ? (
+          <div className="py-12 text-center space-y-4">
+            <div className="inline-flex p-4 rounded-xl bg-muted/30 border-2 border-dashed border-border">
+              <AlertCircle className="h-10 w-10 text-muted-foreground opacity-40" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium">No compatible files found</p>
+              <p className="text-xs text-muted-foreground">Create files with the same language to run them together</p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Stats and Quick Actions */}
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 className="h-5 w-5 text-primary" />
+                <div className="text-sm">
+                  <span className="font-semibold">{selectedCount}</span>
+                  <span className="text-muted-foreground"> of </span>
+                  <span className="font-semibold">{totalCount}</span>
+                  <span className="text-muted-foreground"> files selected</span>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={selectAll} className="h-8">
+                  Select All
+                </Button>
+                <Button variant="outline" size="sm" onClick={selectNone} className="h-8">
+                  Clear
+                </Button>
+              </div>
+            </div>
+
+            {/* File Lists */}
+            <ScrollArea className="h-[400px] rounded-lg border">
+              <div className="p-3 space-y-4">
+                {/* Source Files Section */}
+                {sourceFiles.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 px-2 py-1">
+                      <File className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                        Source Files
+                      </span>
+                    </div>
+                    <div className="space-y-1">
+                      {sourceFiles.map((file) => {
+                        const isEntryPoint = file.id === activeFileId;
+                        const isSelected = localSelected.has(file.id);
+                        const fileSize = getFileSize(file.content);
+
+                        return (
+                          <div
+                            key={file.id}
+                            className={cn(
+                              'flex items-center gap-3 p-3 rounded-md transition-all',
+                              'hover:bg-muted/50 border',
+                              isSelected ? 'bg-muted border-primary/20' : 'bg-background border-transparent'
+                            )}
+                          >
+                            <Checkbox
+                              id={file.id}
+                              checked={isSelected}
+                              disabled={isEntryPoint}
+                              onCheckedChange={() => toggleFile(file.id)}
+                              className="shrink-0"
+                            />
+                            <FileIcon filename={file.name} size={18} className="shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <label
+                                htmlFor={file.id}
+                                className={cn(
+                                  'block truncate text-sm cursor-pointer',
+                                  isEntryPoint && 'font-semibold'
+                                )}
+                              >
+                                {file.path}
+                              </label>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {isEntryPoint && (
+                                <Badge variant="default" className="text-xs font-medium">
+                                  Entry Point
+                                </Badge>
+                              )}
+                              <span className="text-xs text-muted-foreground font-mono">
+                                {formatBytes(fileSize)}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Data Files Section */}
+                {dataFiles.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 px-2 py-1">
+                      <Database className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                        Data Files
+                      </span>
+                      <Badge variant="secondary" className="text-xs">
+                        Auto-included
+                      </Badge>
+                    </div>
+                    <div className="space-y-1">
+                      {dataFiles.map((file) => {
+                        const isSelected = localSelected.has(file.id);
+                        const fileSize = getFileSize(file.content);
+
+                        return (
+                          <div
+                            key={file.id}
+                            className={cn(
+                              'flex items-center gap-3 p-3 rounded-md transition-all',
+                              'hover:bg-muted/50 border',
+                              isSelected ? 'bg-muted border-primary/20' : 'bg-background border-transparent'
+                            )}
+                          >
+                            <Checkbox
+                              id={file.id}
+                              checked={isSelected}
+                              onCheckedChange={() => toggleFile(file.id)}
+                              className="shrink-0"
+                            />
+                            <FileIcon filename={file.name} size={18} className="shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <label
+                                htmlFor={file.id}
+                                className="block truncate text-sm cursor-pointer"
+                              >
+                                {file.path}
+                              </label>
+                            </div>
+                            <span className="text-xs text-muted-foreground font-mono shrink-0">
+                              {formatBytes(fileSize)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+
+            {/* Total Size Display */}
+            <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-muted/20 text-sm">
+              <span className="text-muted-foreground">Total size:</span>
+              <span className="font-mono font-semibold">{formatBytes(totalSize)}</span>
+            </div>
+          </div>
+        )}
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleRunWithSelection}
+            disabled={localSelected.size === 0 || isRunning}
+            className="gap-2 min-w-[120px]"
+          >
+            {isRunning ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Running...
+              </>
+            ) : (
+              <>
+                <Play className="h-4 w-4 fill-current" />
+                Run {activeLanguage}
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}import { useMemo } from 'react';
+import {
+  getIconForFile,
+  getIconForFolder,
+  getIconForOpenFolder,
+  DEFAULT_FILE,
+  DEFAULT_FOLDER,
+  DEFAULT_FOLDER_OPENED,
+} from 'vscode-icons-ts';
+
+interface FileIconProps {
+  filename: string;
+  isFolder?: boolean;
+  isOpen?: boolean;
+  className?: string;
+  size?: number;
+}
+
+export function FileIcon({ 
+  filename, 
+  isFolder = false, 
+  isOpen = false, 
+  className = '',
+  size = 16 
+}: FileIconProps) {
+  const iconName = useMemo(() => {
+    if (isFolder) {
+      return isOpen 
+        ? getIconForOpenFolder(filename) || DEFAULT_FOLDER_OPENED
+        : getIconForFolder(filename) || DEFAULT_FOLDER;
+    }
+    return getIconForFile(filename) || DEFAULT_FILE;
+  }, [filename, isFolder, isOpen]);
+
+  return (
+    <img
+      src={`/icons/${iconName}`}
+      alt=""
+      width={size}
+      height={size}
+      className={className}
+      style={{ 
+        minWidth: size, 
+        minHeight: size,
+        objectFit: 'contain'
+      }}
+      draggable={false}
+    />
+  );
+}
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
+
+type Props = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+};
+
+export function KeyboardShortcutsModal({ open, onOpenChange }: Props) {
+  const isMac =
+    typeof navigator !== "undefined" &&
+    /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+
+  const shortcuts = [
+    {
+      id: "save",
+      action: "Save file",
+      keys: isMac ? "Cmd + S" : "Ctrl + S",
+    },
+    {
+      id: "run",
+      action: "Run code",
+      keys: isMac ? "Cmd + Enter" : "Ctrl + Enter",
+    },
+  ];
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+    >
+      <DialogContent>
+        <DialogTitle>Keyboard Shortcuts</DialogTitle>
+        <DialogDescription className="mb-4">
+          Helpful shortcuts for the editor.
+        </DialogDescription>
+
+        <div className="grid gap-3">
+          {shortcuts.map((s) => (
+            <div
+              key={s.id}
+              className="flex items-center justify-between rounded-md border px-3 py-2"
+            >
+              <div className="text-sm font-medium">{s.action}</div>
+              <div className="text-xs font-mono text-muted-foreground">
+                {s.keys}
+              </div>
+            </div>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export default KeyboardShortcutsModal;
+import { Moon, Sun, AlertTriangle } from "lucide-react"
+import { useState, useEffect } from "react"
+import { useTheme } from "./theme-provider"
+import fabricLogo from "../assets/fabric.png"
+import codeRunnerLogo from "../assets/CodeRunner.png"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import KeyboardShortcutsModal from "./KeyboardShortcutsModal";
+
+export function Navbar() {
+  const { theme, setTheme } = useTheme()
+  const [showWarning, setShowWarning] = useState(true)
+  const [showShortcuts, setShowShortcuts] = useState(false);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "?") {
+        const target = e.target as HTMLElement | null;
+        if (
+          target &&
+          (target.tagName === "INPUT" ||
+            target.tagName === "TEXTAREA" ||
+            target.isContentEditable)
+        )
+          return;
+        setShowShortcuts(true);
+      }
+    }
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  return (
+    <div className="flex flex-col">
+      {/* Warning Banner */}
+      {showWarning && (
+        <Alert variant="default" className="rounded-none border-x-0 border-t-0 bg-amber-500/10 border-amber-500/30">
+          <AlertTriangle className="h-4 w-4 text-amber-500" />
+          <AlertDescription className="text-amber-600 dark:text-amber-400 text-sm">
+            <strong>Warning:</strong> Your work is temporary and will be lost when you close this tab. 
+            This is a session-based editor — data is not saved to a server.
+          </AlertDescription>
+          <button
+            aria-label="Dismiss warning"
+            onClick={() => setShowWarning(false)}
+            className="absolute right-4 top-1/2 -translate-y-1/2 inline-flex items-center justify-center h-6 w-6 rounded text-amber-500 hover:bg-amber-500/20 text-lg leading-none"
+          >
+            ×
+          </button>
+        </Alert>
+      )}
+
+      {/* Navbar - Redesigned */}
+      <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="flex h-16 items-center px-6 gap-6">
+          {/* Logo Section */}
+          <a
+            href="https://fabric-eec.vercel.app"
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-accent/50 transition-all duration-200 group"
+          >
+            <img
+              src={fabricLogo}
+              alt="Fabric Logo"
+              className="h-9 w-auto group-hover:scale-105 transition-transform"
+            />
+            <div className="h-8 w-px bg-border" />
+          </a>
+
+          {/* Brand Section */}
+          <div className="flex items-center gap-3">
+            <img
+              src={codeRunnerLogo}
+              alt="CodeRunner Logo"
+              className="h-8 w-auto"
+            />
+            <div className="flex flex-col">
+              <span className="font-bold text-lg leading-none">CodeRunner</span>
+              <span className="text-xs text-muted-foreground">Web IDE</span>
+            </div>
+          </div>
+
+          {/* Spacer */}
+          <div className="flex-1" />
+
+          {/* Theme Toggle */}
+          <button
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            className="inline-flex items-center justify-center rounded-lg text-sm font-medium transition-all hover:bg-accent hover:text-accent-foreground h-10 w-10 hover:scale-105 active:scale-95"
+            aria-label="Toggle theme"
+          >
+            <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+            <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+          </button>
+          {/* Help / Shortcuts Button */}
+          <button
+            aria-label="Keyboard shortcuts"
+            onClick={() => setShowShortcuts(true)}
+            className="inline-flex items-center justify-center rounded-lg text-sm font-medium transition-all hover:bg-accent hover:text-accent-foreground h-10 w-10 hover:scale-105 active:scale-95"
+          >
+            ?
+          </button>
+        </div>
+      </nav>
+      <KeyboardShortcutsModal
+        open={showShortcuts}
+        onOpenChange={setShowShortcuts}
+      />
+    </div>
+  )
+}
+import { createContext, useContext, useEffect, useState } from "react"
+
+type Theme = "dark" | "light" | "system"
+
+type ThemeProviderProps = {
+  children: React.ReactNode
+  defaultTheme?: Theme
+  storageKey?: string
+}
+
+type ThemeProviderState = {
+  theme: Theme
+  setTheme: (theme: Theme) => void
+}
+
+const initialState: ThemeProviderState = {
+  theme: "system",
+  setTheme: () => null,
+}
+
+const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
+
+export function ThemeProvider({
+  children,
+  defaultTheme = "system",
+  storageKey = "vite-ui-theme",
+}: ThemeProviderProps) {
+  const [theme, setTheme] = useState<Theme>(
+    () => (localStorage.getItem(storageKey) as Theme) || defaultTheme
+  )
+
+  useEffect(() => {
+    const root = window.document.documentElement
+
+    root.classList.remove("light", "dark")
+
+    if (theme === "system") {
+      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
+        .matches
+        ? "dark"
+        : "light"
+
+      root.classList.add(systemTheme)
+      return
+    }
+
+    root.classList.add(theme)
+  }, [theme])
+
+  const value = {
+    theme,
+    setTheme: (theme: Theme) => {
+      localStorage.setItem(storageKey, theme)
+      setTheme(theme)
+    },
+  }
+
+  return (
+    <ThemeProviderContext.Provider value={value}>
+      {children}
+    </ThemeProviderContext.Provider>
+  )
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const useTheme = () => {
+  const context = useContext(ThemeProviderContext)
+
+  if (context === undefined)
+    throw new Error("useTheme must be used within a ThemeProvider")
+
+  return context
+}
+import { useState, useCallback } from 'react';
+import {
+  Folder,
+  FilePlus,
+  FolderPlus,
+  ChevronRight,
+  ChevronDown,
+  Trash2,
+  Pencil,
+  MoreVertical,
+  FileCode,
+} from 'lucide-react';
+import { useEditorStore } from '@/stores/useEditorStore';
+import type { EditorState } from '@/stores/useEditorStore';
+import { sortFileNodes } from '@/lib/file-utils';
+import { FileIcon } from '@/components/FileIcon';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { cn } from '@/lib/utils';
+
+// Dialog types
+type DialogType = 'newFile' | 'newFolder' | 'rename' | null;
+
+interface DialogState {
+  type: DialogType;
+  parentId: string | null;
+  targetId?: string;
+  initialValue?: string;
+}
+
+// File tree node component
+interface FileTreeNodeProps {
+  nodeId: string;
+  depth: number;
+  onContextAction: (action: string, nodeId: string, isFolder: boolean) => void;
+  selectedNodeId: string | null;
+  onSelectNode: (nodeId: string) => void;
+}
+
+function FileTreeNode({ nodeId, depth, onContextAction, selectedNodeId, onSelectNode }: FileTreeNodeProps) {
+  const [isExpanded, setIsExpanded] = useState(true);
+  const files = useEditorStore((state: EditorState) => state.files);
+  const activeFileId = useEditorStore((state: EditorState) => state.activeFileId);
+  const setActiveFile = useEditorStore((state: EditorState) => state.setActiveFile);
+  const openTab = useEditorStore((state: EditorState) => state.openTab);
+  const node = files[nodeId];
+
+  if (!node) return null;
+
+  const handleClick = () => {
+    onSelectNode(nodeId);
+    
+    if (node.isFolder) {
+      setIsExpanded(!isExpanded);
+    } else {
+      setActiveFile(node.id);
+      openTab(node.id);
+    }
+  };
+
+  const isActive = activeFileId === node.id;
+  const sortedChildren = sortFileNodes(node.children, files);
+
+  return (
+    <div>
+      <ContextMenu>
+        <ContextMenuTrigger>
+          <div
+            className={cn(
+              'group flex items-center gap-2 text-sm cursor-pointer py-1.5 px-2 rounded-md transition-all',
+              'hover:bg-sidebar-accent/70',
+              selectedNodeId === node.id
+                ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm'
+                : !selectedNodeId && isActive && !node.isFolder && 'bg-sidebar-accent/50 text-sidebar-accent-foreground'
+            )}
+            style={{ paddingLeft: `${depth * 16 + 8}px` }}
+            onClick={handleClick}
+          >
+            {node.isFolder ? (
+              <>
+                {isExpanded ? (
+                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform" />
+                ) : (
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform" />
+                )}
+                <FileIcon 
+                  filename={node.name} 
+                  isFolder 
+                  isOpen={isExpanded} 
+                  className="shrink-0" 
+                />
+              </>
+            ) : (
+              <>
+                <span className="w-4 shrink-0" />
+                <FileIcon filename={node.name} className="shrink-0" />
+              </>
+            )}
+            <span className="truncate flex-1 font-medium">{node.name}</span>
+            {node.isModified && !node.isFolder && (
+              <span className="text-xs text-orange-400 font-bold">●</span>
+            )}
+            {!node.isFolder && (
+              <ContextMenu>
+                <ContextMenuTrigger asChild>
+                  <button
+                    className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-sidebar-accent transition-opacity"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MoreVertical className="h-3.5 w-3.5" />
+                  </button>
+                </ContextMenuTrigger>
+                <ContextMenuContent>
+                  <ContextMenuItem
+                    onClick={() => onContextAction('rename', node.id, false)}
+                  >
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Rename
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    className="text-destructive"
+                    onClick={() => onContextAction('delete', node.id, false)}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              </ContextMenu>
+            )}
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          {node.isFolder && (
+            <>
+              <ContextMenuItem
+                onClick={() => onContextAction('newFile', node.id, true)}
+              >
+                <FilePlus className="h-4 w-4 mr-2" />
+                New File
+              </ContextMenuItem>
+              <ContextMenuItem
+                onClick={() => onContextAction('newFolder', node.id, true)}
+              >
+                <FolderPlus className="h-4 w-4 mr-2" />
+                New Folder
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+            </>
+          )}
+          <ContextMenuItem
+            onClick={() => onContextAction('rename', node.id, node.isFolder)}
+          >
+            <Pencil className="h-4 w-4 mr-2" />
+            Rename
+          </ContextMenuItem>
+          <ContextMenuItem
+            onClick={() => onContextAction('delete', node.id, node.isFolder)}
+            className="text-destructive focus:text-destructive"
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Delete
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
+
+      {/* Render children if folder is expanded */}
+      {node.isFolder && isExpanded && sortedChildren.length > 0 && (
+        <div>
+          {sortedChildren.map((childId) => (
+            <FileTreeNode
+              key={childId}
+              nodeId={childId}
+              depth={depth + 1}
+              onContextAction={onContextAction}
+              selectedNodeId={selectedNodeId}
+              onSelectNode={onSelectNode}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function Workspace() {
+  const files = useEditorStore((state: EditorState) => state.files);
+  const rootIds = useEditorStore((state: EditorState) => state.rootIds);
+  const addFile = useEditorStore((state: EditorState) => state.addFile);
+  const addFolder = useEditorStore((state: EditorState) => state.addFolder);
+  const deleteNode = useEditorStore((state: EditorState) => state.deleteNode);
+  const renameNode = useEditorStore((state: EditorState) => state.renameNode);
+
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [dialogState, setDialogState] = useState<DialogState>({
+    type: null,
+    parentId: null,
+  });
+  const [inputValue, setInputValue] = useState('');
+  const [inputError, setInputError] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    id: string;
+    name: string;
+    isFolder: boolean;
+  } | null>(null);
+
+  const getParentIdForNewItem = useCallback(() => {
+    if (!selectedNodeId) return null;
+    const selectedNode = files[selectedNodeId];
+    if (!selectedNode) return null;
+    return selectedNode.isFolder ? selectedNodeId : selectedNode.parentId || null;
+  }, [selectedNodeId, files]);
+
+  const sortedRootIds = sortFileNodes(rootIds, files);
+
+  const openDialog = useCallback(
+    (type: DialogType, parentId: string | null, targetId?: string) => {
+      const initialValue = targetId ? files[targetId]?.name || '' : '';
+      setDialogState({ type, parentId, targetId, initialValue });
+      setInputValue(initialValue);
+      setInputError(null);
+    },
+    [files]
+  );
+
+  const closeDialog = useCallback(() => {
+    setDialogState({ type: null, parentId: null });
+    setInputValue('');
+    setInputError(null);
+  }, []);
+
+  const handleContextAction = useCallback(
+    (action: string, nodeId: string, isFolder: boolean) => {
+      switch (action) {
+        case 'newFile':
+          openDialog('newFile', nodeId);
+          break;
+        case 'newFolder':
+          openDialog('newFolder', nodeId);
+          break;
+        case 'rename':
+          openDialog('rename', null, nodeId);
+          break;
+        case 'delete': {
+          const node = files[nodeId];
+          if (node) {
+            setDeleteConfirm({ id: nodeId, name: node.name, isFolder });
+          }
+          break;
+        }
+      }
+    },
+    [files, openDialog]
+  );
+
+  const handleSubmit = useCallback(() => {
+    const trimmedValue = inputValue.trim();
+    if (!trimmedValue) {
+      setInputError('Name cannot be empty');
+      return;
+    }
+
+    let result: { success: boolean; error?: string };
+
+    switch (dialogState.type) {
+      case 'newFile':
+        result = addFile(trimmedValue, dialogState.parentId);
+        break;
+      case 'newFolder':
+        result = addFolder(trimmedValue, dialogState.parentId);
+        break;
+      case 'rename':
+        if (dialogState.targetId) {
+          result = renameNode(dialogState.targetId, trimmedValue);
+        } else {
+          result = { success: false, error: 'No target selected' };
+        }
+        break;
+      default:
+        result = { success: false, error: 'Unknown action' };
+    }
+
+    if (result.success) {
+      closeDialog();
+    } else {
+      setInputError(result.error || 'An error occurred');
+    }
+  }, [
+    inputValue,
+    dialogState,
+    addFile,
+    addFolder,
+    renameNode,
+    closeDialog,
+  ]);
+
+  const handleDelete = useCallback(() => {
+    if (deleteConfirm) {
+      deleteNode(deleteConfirm.id);
+      setDeleteConfirm(null);
+    }
+  }, [deleteConfirm, deleteNode]);
+
+  const getDialogTitle = () => {
+    switch (dialogState.type) {
+      case 'newFile':
+        return 'New File';
+      case 'newFolder':
+        return 'New Folder';
+      case 'rename':
+        return 'Rename';
+      default:
+        return '';
+    }
+  };
+
+  const getDialogDescription = () => {
+    switch (dialogState.type) {
+      case 'newFile':
+        return 'Enter a name for the new file';
+      case 'newFolder':
+        return 'Enter a name for the new folder';
+      case 'rename':
+        return 'Enter the new name';
+      default:
+        return '';
+    }
+  };
+
+  return (
+    <TooltipProvider>
+      <div className="h-full w-full bg-sidebar flex flex-col border-r overflow-hidden">
+        {/* Header - Redesigned */}
+        <div className="flex items-center justify-between px-4 py-4 border-b border-sidebar-border shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-sidebar-accent/50">
+              <Folder className="h-4 w-4 text-sidebar-foreground" />
+            </div>
+            <span className="text-sm font-semibold text-sidebar-foreground">Explorer</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 hover:bg-sidebar-accent"
+                  onClick={() => openDialog('newFile', getParentIdForNewItem())}
+                >
+                  <FilePlus className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>New File</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 hover:bg-sidebar-accent"
+                  onClick={() => openDialog('newFolder', getParentIdForNewItem())}
+                >
+                  <FolderPlus className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>New Folder</TooltipContent>
+            </Tooltip>
+          </div>
+        </div>
+
+        {/* File Tree */}
+        <ScrollArea className="flex-1">
+          <div className="py-3 px-2">
+            {sortedRootIds.length === 0 ? (
+              <div className="px-3 py-12 text-center space-y-4">
+                <div className="inline-flex p-4 rounded-xl bg-sidebar-accent/30 border-2 border-dashed border-sidebar-border">
+                  <FileCode className="h-10 w-10 text-muted-foreground opacity-40" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-sidebar-foreground">No files yet</p>
+                  <p className="text-xs text-muted-foreground">
+                    Click the buttons above to create files
+                  </p>
+                </div>
+              </div>
+            ) : (
+              sortedRootIds.map((nodeId) => (
+                <FileTreeNode
+                  key={nodeId}
+                  nodeId={nodeId}
+                  depth={0}
+                  onContextAction={handleContextAction}
+                  selectedNodeId={selectedNodeId}
+                  onSelectNode={setSelectedNodeId}
+                />
+              ))
+            )}
+          </div>
+        </ScrollArea>
+
+        {/* New File/Folder/Rename Dialog */}
+        <Dialog open={dialogState.type !== null} onOpenChange={(open: boolean) => !open && closeDialog()}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{getDialogTitle()}</DialogTitle>
+              <DialogDescription>{getDialogDescription()}</DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <Input
+                value={inputValue}
+                onChange={(e) => {
+                  setInputValue(e.target.value);
+                  setInputError(null);
+                }}
+                onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+                placeholder={
+                  dialogState.type === 'newFolder'
+                    ? 'folder-name'
+                    : 'filename.ext'
+                }
+                autoFocus
+              />
+              {inputError && (
+                <p className="text-sm text-destructive mt-2">{inputError}</p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={closeDialog}>
+                Cancel
+              </Button>
+              <Button onClick={handleSubmit}>
+                {dialogState.type === 'rename' ? 'Rename' : 'Create'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog
+          open={deleteConfirm !== null}
+          onOpenChange={(open: boolean) => !open && setDeleteConfirm(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete {deleteConfirm?.isFolder ? 'folder' : 'file'}?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete "{deleteConfirm?.name}"?
+                {deleteConfirm?.isFolder && ' All contents will be deleted.'}
+                {' '}This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDelete}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    </TooltipProvider>
+  );
+}
