@@ -31,6 +31,7 @@ const icons = [
   'file_type_typescriptdef.svg',
   'file_type_typescriptdef_official.svg',
   'file_type_rust.svg',
+  'file_type_sql.svg',
   'file_type_go.svg',
   'file_type_go_gopher.svg',
   'file_type_json.svg',
