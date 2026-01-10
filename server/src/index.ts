@@ -115,7 +115,17 @@ function getRunCommand(language: string, entryFile: string): string {
   switch(language) {
     case 'python': return `python -u ${entryFile}`; // -u for unbuffered output
     case 'javascript': return `node ${entryFile}`;
-    case 'cpp': return 'find . -maxdepth 1 \\( -name "*.c" -o -name "*.cpp" -o -name "*.cc" -o -name "*.cxx" -o -name "*.c++" \\) -print0 | xargs -0 g++ -o app && ./app';
+    case 'cpp': {
+      // Determine compiler and file extension pattern based on entry file
+      const ext = entryFile.split('.').pop()?.toLowerCase();
+      if (ext === 'c') {
+        // Pure C files - use gcc and only compile .c files
+        return 'find . -maxdepth 1 -name "*.c" -print0 | xargs -0 gcc -o app && ./app';
+      } else {
+        // C++ files (.cpp, .cc, .cxx, .c++) - use g++ and compile C++ files only
+        return 'find . -maxdepth 1 \\( -name "*.cpp" -o -name "*.cc" -o -name "*.cxx" -o -name "*.c++" \\) -print0 | xargs -0 g++ -o app && ./app';
+      }
+    }
     case 'java': {
       const className = entryFile.split('/').pop()?.replace('.java', '') || entryFile.replace('.java', '');
       return `javac -d . $(find . -name "*.java") && java ${className}`;
@@ -227,16 +237,36 @@ io.on('connection', (socket) => {
     const runId = Date.now().toString() + Math.random().toString(36).substring(7);
     tempDir = path.resolve(__dirname, '..', 'temp', `runner-${runId}`);
 
-    // 2. Write files
+    // 2. Write files (filter for C/C++ to avoid conflicts)
     try {
       fs.mkdirSync(tempDir, { recursive: true });
-      for (const file of files) {
+      
+      // For C/C++, filter files based on entry file extension to avoid conflicts
+      let filesToWrite = files;
+      if (language === 'cpp' && execFile) {
+        const entryExt = execFile.path.split('.').pop()?.toLowerCase();
+        if (entryExt === 'c') {
+          // Only copy .c and .h files
+          filesToWrite = files.filter(f => {
+            const ext = f.path.split('.').pop()?.toLowerCase();
+            return ext === 'c' || ext === 'h';
+          });
+        } else {
+          // Only copy C++ files (.cpp, .cc, .cxx, .c++, .hpp, .h)
+          filesToWrite = files.filter(f => {
+            const ext = f.path.split('.').pop()?.toLowerCase();
+            return ext === 'cpp' || ext === 'cc' || ext === 'cxx' || ext === 'c++' || ext === 'hpp' || ext === 'h';
+          });
+        }
+      }
+      
+      for (const file of filesToWrite) {
         const filePath = path.join(tempDir, file.path);
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
         fs.writeFileSync(filePath, file.content);
       }
     } catch (err: any) {
-      cleanup();
+      cleanup().catch(e => console.error('[Cleanup] Error:', e));
       socket.emit('output', { sessionId, type: 'stderr', data: `System Error: ${err.message}\n` });
       socket.emit('exit', { sessionId, code: 1 });
       return;
@@ -246,7 +276,7 @@ io.on('connection', (socket) => {
     const cpCommand = `docker cp "${tempDir}/." ${containerId}:/app/`;
     exec(cpCommand, (cpError) => {
       if (cpError) {
-        cleanup();
+        cleanup().catch(e => console.error('[Cleanup] Error:', e));
         socket.emit('output', { sessionId, type: 'stderr', data: `System Error (Copy): ${cpError.message}\n` });
         socket.emit('exit', { sessionId, code: 1 });
         return;
@@ -288,12 +318,12 @@ io.on('connection', (socket) => {
         if (!manuallyStopped) {
           socket.emit('exit', { sessionId, code, executionTime });
         }
-        cleanup();
+        cleanup().catch(e => console.error('[Cleanup] Error:', e));
       });
 
       currentProcess.on('error', (err: any) => {
         socket.emit('output', { sessionId, type: 'stderr', data: `Process Error: ${err.message}\n` });
-        cleanup();
+        cleanup().catch(e => console.error('[Cleanup] Error:', e));
       });
     });
   });
@@ -311,7 +341,7 @@ io.on('connection', (socket) => {
       currentProcess.kill('SIGTERM');
       socket.emit('output', { sessionId, type: 'system', data: '[Process terminated]\n' });
       socket.emit('exit', { sessionId, code: -1 });
-      cleanup();
+      cleanup().catch(e => console.error('[Cleanup] Error:', e));
     }
   });
 
@@ -322,7 +352,7 @@ io.on('connection', (socket) => {
     if (currentProcess) {
       currentProcess.kill();
     }
-    cleanup();
+    await cleanup().catch(e => console.error('[Cleanup] Error:', e));
     
     // Clean up all session containers for this socket
     await sessionPool.cleanupSession(socket.id);
@@ -333,7 +363,7 @@ io.on('connection', (socket) => {
     );
   });
 
-  function cleanup() {
+  async function cleanup() {
     if (tempDir) {
       try {
         fs.rmSync(tempDir, { recursive: true, force: true });
@@ -341,8 +371,10 @@ io.on('connection', (socket) => {
       tempDir = null;
     }
     if (containerId) {
-      // Return container to pool (TTL refreshed)
-      sessionPool.returnContainer(containerId, socket.id);
+      // Return container to pool (cleaned and TTL refreshed)
+      await sessionPool.returnContainer(containerId, socket.id).catch(err =>
+        console.error(`[Cleanup] Failed to return container to pool:`, err)
+      );
       containerId = null;
     }
     currentProcess = null;
@@ -440,9 +472,29 @@ async function executeWithSessionContainer(
       const runId = Date.now().toString() + Math.random().toString(36).substring(7);
       tempDir = path.resolve(__dirname, '..', 'temp', `runner-${runId}`);
 
-      // Write files
+      // Write files (filter for C/C++ to avoid conflicts)
       fs.mkdirSync(tempDir, { recursive: true });
-      for (const file of files) {
+      
+      // For C/C++, filter files based on entry file extension to avoid conflicts
+      let filesToWrite = files;
+      if (language === 'cpp' && execFile) {
+        const entryExt = execFile.path.split('.').pop()?.toLowerCase();
+        if (entryExt === 'c') {
+          // Only copy .c and .h files
+          filesToWrite = files.filter(f => {
+            const ext = f.path.split('.').pop()?.toLowerCase();
+            return ext === 'c' || ext === 'h';
+          });
+        } else {
+          // Only copy C++ files (.cpp, .cc, .cxx, .c++, .hpp, .h)
+          filesToWrite = files.filter(f => {
+            const ext = f.path.split('.').pop()?.toLowerCase();
+            return ext === 'cpp' || ext === 'cc' || ext === 'cxx' || ext === 'c++' || ext === 'hpp' || ext === 'h';
+          });
+        }
+      }
+      
+      for (const file of filesToWrite) {
         const filePath = path.join(tempDir, file.path);
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
         fs.writeFileSync(filePath, file.content);
@@ -467,8 +519,10 @@ async function executeWithSessionContainer(
         }
 
         if (containerId) {
-          // Return to pool for reuse (TTL refreshed)
-          sessionPool.returnContainer(containerId, sessionId);
+          // Return to pool for reuse (cleaned and TTL refreshed)
+          sessionPool.returnContainer(containerId, sessionId).catch(err =>
+            console.error(`[API] Failed to return container to pool:`, err)
+          );
         }
 
         resolve({ stdout, stderr, exitCode });

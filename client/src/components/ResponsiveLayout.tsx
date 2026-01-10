@@ -5,6 +5,8 @@ import { Workspace } from '@/components/Workspace';
 import { CodeEditor } from '@/components/CodeEditor';
 import { Console } from '@/components/Console';
 import { cn } from '@/lib/utils';
+import { useEditorStore } from '@/stores/useEditorStore';
+import type { EditorState } from '@/stores/useEditorStore';
 
 interface ResponsiveLayoutProps {
   onRunClick: () => void;
@@ -14,7 +16,21 @@ interface ResponsiveLayoutProps {
 export function ResponsiveLayout({ onRunClick, onStopClick }: ResponsiveLayoutProps) {
   const [isMobile, setIsMobile] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
-  const [isConsoleMinimized, setIsConsoleMinimized] = useState(false);
+  const [isConsoleMinimized, setIsConsoleMinimized] = useState(true);
+  const [hasEverRun, setHasEverRun] = useState(false);
+  
+  // Track if any console exists (code has been run at least once)
+  const hasConsoles = useEditorStore((state: EditorState) => 
+    Object.keys(state.consoles).length > 0
+  );
+  
+  // Auto-expand console on first run and keep it expanded
+  useEffect(() => {
+    if (hasConsoles && !hasEverRun) {
+      setHasEverRun(true);
+      setIsConsoleMinimized(false);
+    }
+  }, [hasConsoles, hasEverRun]);
 
   // Detect mobile/tablet viewport (< 1024px for sidebar menu)
   useEffect(() => {
@@ -68,20 +84,20 @@ export function ResponsiveLayout({ onRunClick, onStopClick }: ResponsiveLayoutPr
         )}
 
         {/* Editor and Console Area */}
-        <div className="flex-1 min-w-0 flex flex-col">
+        <div className="flex-1 min-w-0 flex flex-col h-full">
           {/* Editor */}
-          <div className={cn(
-            "flex-1 min-h-0",
-            isConsoleMinimized ? "h-full" : "h-3/5"
-          )}>
+          <div 
+            className="min-h-0 overflow-hidden transition-all duration-500 ease-in-out"
+            style={{ height: isConsoleMinimized ? 'calc(100% - 2.5rem)' : '50%' }}
+          >
             <CodeEditor onRunClick={onRunClick} onStopClick={onStopClick} />
           </div>
 
           {/* Console */}
-          <div className={cn(
-            "border-t transition-all duration-200",
-            isConsoleMinimized ? "h-auto" : "h-2/5"
-          )}>
+          <div 
+            className="border-t overflow-hidden transition-all duration-500 ease-in-out"
+            style={{ height: isConsoleMinimized ? '2.5rem' : '50%' }}
+          >
             <Console
               isMinimized={isConsoleMinimized}
               onToggleMinimize={() => setIsConsoleMinimized(!isConsoleMinimized)}

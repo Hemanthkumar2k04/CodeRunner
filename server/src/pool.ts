@@ -83,9 +83,9 @@ class SessionContainerPool {
 
   /**
    * Return container to pool after execution
-   * Updates lastUsed timestamp and marks as available
+   * Cleans container data and updates lastUsed timestamp
    */
-  returnContainer(containerId: string, sessionId: string): void {
+  async returnContainer(containerId: string, sessionId: string): Promise<void> {
     const sessionContainers = this.pool.get(sessionId);
     if (!sessionContainers) {
       console.warn(`[Pool] No containers found for session ${sessionId}`);
@@ -94,9 +94,27 @@ class SessionContainerPool {
 
     const container = sessionContainers.find(c => c.containerId === containerId);
     if (container) {
+      // Clean container data before returning to pool
+      await this.cleanContainer(containerId);
+      
       container.inUse = false;
       container.lastUsed = Date.now();
-      console.log(`[Pool] Returned container ${containerId.substring(0, 12)} to pool (TTL refreshed)`);
+      console.log(`[Pool] Returned container ${containerId.substring(0, 12)} to pool (cleaned and TTL refreshed)`);
+    }
+  }
+
+  /**
+   * Clean all data from a container's /app directory and temporary build artifacts
+   * This ensures no previous execution data remains when container is reused
+   */
+  private async cleanContainer(containerId: string): Promise<void> {
+    try {
+      // Remove all files from /app directory and clean temp/build artifacts
+      await execAsync(`docker exec ${containerId} sh -c "rm -rf /app/* /app/.* /tmp/* 2>/dev/null || true"`);
+      console.log(`[Pool] Cleaned container ${containerId.substring(0, 12)}`);
+    } catch (error: any) {
+      console.error(`[Pool] Failed to clean container ${containerId.substring(0, 12)}:`, error.message);
+      // Don't throw - container can still be used
     }
   }
 
