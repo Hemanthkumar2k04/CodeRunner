@@ -4,6 +4,8 @@ import { useTheme } from './theme-provider';
 import { useEditorStore } from '@/stores/useEditorStore';
 import type { EditorState } from '@/stores/useEditorStore';
 import { getMonacoLanguage, getLanguageFromExtension, formatBytes, getFileSize } from '@/lib/file-utils';
+import { isNotebookFile } from '@/lib/notebook-utils';
+import { NotebookEditor } from './NotebookEditor';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -38,6 +40,7 @@ export function CodeEditor({ onRunClick, onStopClick }: CodeEditorProps) {
   const isRunning = activeConsole?.isRunning || false;
   const language = activeFile ? getMonacoLanguage(activeFile.name) : 'plaintext';
   const execLanguage = activeFile ? getLanguageFromExtension(activeFile.name) : null;
+  const isNotebook = activeFile ? isNotebookFile(activeFile.name) : false;
 
   const handleEditorWillMount = useCallback((monaco: Monaco) => {
     // Ensure all necessary languages are registered and available
@@ -205,7 +208,7 @@ export function CodeEditor({ onRunClick, onStopClick }: CodeEditorProps) {
                     isRunning && "bg-destructive hover:bg-destructive/90"
                   )}
                   onClick={handleRunClick}
-                  disabled={!activeFile || !execLanguage}
+                  disabled={!activeFile || (!execLanguage && !isNotebook)}
                 >
                   {isRunning ? (
                     <>
@@ -223,7 +226,7 @@ export function CodeEditor({ onRunClick, onStopClick }: CodeEditorProps) {
               <TooltipContent>
                 {!activeFile
                   ? 'Open a file to run'
-                  : !execLanguage
+                  : !execLanguage && !isNotebook
                   ? 'Unsupported language'
                   : isRunning
                   ? 'Stop execution'
@@ -234,24 +237,36 @@ export function CodeEditor({ onRunClick, onStopClick }: CodeEditorProps) {
         </div>
 
         {/* Editor */}
-        <div className="flex-1 min-h-0">
-          <Editor
-            height="100%"
-            language={language}
-            value={activeFile?.content ?? ''}
-            onChange={handleEditorChange}
-            theme={theme === 'dark' ? 'vs-dark' : 'light'}
-            beforeMount={handleEditorWillMount}
-            options={{
-              minimap: { enabled: false },
-              fontSize: 14,
-              padding: { top: 16 },
-              wordWrap: 'on',
-              automaticLayout: true,
-              scrollBeyondLastLine: false,
-              tabSize: 2,
-            }}
-          />
+        <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+          {isNotebook && activeFile ? (
+            <NotebookEditor
+              fileId={activeFileId!}
+              content={activeFile.content}
+              onContentChange={(content) => {
+                if (activeFileId) {
+                  updateContent(activeFileId, content);
+                }
+              }}
+            />
+          ) : (
+            <Editor
+              height="100%"
+              language={language}
+              value={activeFile?.content ?? ''}
+              onChange={handleEditorChange}
+              theme={theme === 'dark' ? 'vs-dark' : 'light'}
+              beforeMount={handleEditorWillMount}
+              options={{
+                minimap: { enabled: false },
+                fontSize: 14,
+                padding: { top: 16 },
+                wordWrap: 'on',
+                automaticLayout: true,
+                scrollBeyondLastLine: false,
+                tabSize: 2,
+              }}
+            />
+          )}
         </div>
       </div>
     </TooltipProvider>

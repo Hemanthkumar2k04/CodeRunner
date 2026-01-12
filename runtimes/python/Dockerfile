@@ -1,6 +1,14 @@
 FROM python:3.12-slim
 
-RUN pip install --no-cache-dir numpy
+# Install packages for notebook support (data science + visualization)
+RUN pip install --no-cache-dir \
+    numpy \
+    pandas \
+    matplotlib \
+    ipykernel \
+    pillow
+
+# Create non-root user
 RUN useradd -m runner
 USER runner
 WORKDIR /app

@@ -74,6 +74,7 @@ const extensionToMonaco: Record<string, string> = {
   '.sh': 'shell',
   '.bash': 'shell',
   '.txt': 'plaintext',
+  '.ipynb': 'json', // Notebooks are JSON files in Monaco
 };
 
 // File icon mappings based on extension
@@ -94,6 +95,7 @@ export const extensionToIcon: Record<string, string> = {
   '.json': '📦',
   '.md': '📝',
   '.txt': '📄',
+  '.ipynb': '📓',
 };
 
 /**

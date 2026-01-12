@@ -8,6 +8,7 @@ import { Server } from 'socket.io';
 import { sessionPool } from './pool';
 import { config } from './config';
 import { getOrCreateSessionNetwork, deleteSessionNetwork, getNetworkName, cleanupOrphanedNetworks } from './networkManager';
+import { kernelManager } from './kernelManager';
 
 const app = express();
 const httpServer = createServer(app);
@@ -136,6 +137,24 @@ function getRunCommand(language: string, entryFile: string): string {
     default: throw new Error(`Unsupported language: ${language}`);
   }
 }
+
+// --- Kernel Manager Callbacks ---
+// Set up kernel output and status streaming to clients
+kernelManager.onOutput((kernelId, output) => {
+  console.log(`[Kernel Output] kernelId=${kernelId}, cellId=${output.cellId}, type=${output.type}, content=${output.content.substring(0, 50)}`);
+  // Broadcast to all sockets (in production, filter by socketId)
+  io.emit('kernel:output', { kernelId, ...output });
+});
+
+kernelManager.onStatusChange((kernelId, status) => {
+  console.log(`[Kernel Status] kernelId=${kernelId}, status=${status}`);
+  io.emit('kernel:status', { kernelId, status });
+});
+
+kernelManager.onCellComplete((kernelId, cellId) => {
+  console.log(`[Kernel Cell Complete] kernelId=${kernelId}, cellId=${cellId}`);
+  io.emit('kernel:cell_complete', { kernelId, cellId });
+});
 
 // --- WebSocket Handling ---
 io.on('connection', (socket) => {
@@ -345,6 +364,58 @@ io.on('connection', (socket) => {
     }
   });
 
+  // --- Notebook Kernel Events ---
+  
+  socket.on('kernel:start', async (data: { notebookId: string; language?: string }) => {
+    const { notebookId, language = 'python' } = data;
+    try {
+      const kernelId = await kernelManager.startKernel(notebookId, socket.id, language);
+      socket.emit('kernel:started', { notebookId, kernelId });
+    } catch (error: any) {
+      socket.emit('kernel:error', { notebookId, error: error.message });
+    }
+  });
+
+  socket.on('kernel:execute', async (data: { kernelId: string; cellId: string; code: string }) => {
+    const { kernelId, cellId, code } = data;
+    try {
+      const executionCount = await kernelManager.executeCell(kernelId, cellId, code);
+      socket.emit('kernel:execution_started', { kernelId, cellId, executionCount });
+    } catch (error: any) {
+      socket.emit('kernel:error', { kernelId, cellId, error: error.message });
+    }
+  });
+
+  socket.on('kernel:interrupt', async (data: { kernelId: string }) => {
+    const { kernelId } = data;
+    try {
+      await kernelManager.interruptKernel(kernelId);
+      socket.emit('kernel:interrupted', { kernelId });
+    } catch (error: any) {
+      socket.emit('kernel:error', { kernelId, error: error.message });
+    }
+  });
+
+  socket.on('kernel:restart', async (data: { kernelId: string }) => {
+    const { kernelId } = data;
+    try {
+      await kernelManager.restartKernel(kernelId);
+      socket.emit('kernel:restarted', { kernelId });
+    } catch (error: any) {
+      socket.emit('kernel:error', { kernelId, error: error.message });
+    }
+  });
+
+  socket.on('kernel:shutdown', async (data: { kernelId: string }) => {
+    const { kernelId } = data;
+    try {
+      await kernelManager.shutdownKernel(kernelId);
+      socket.emit('kernel:shutdown_complete', { kernelId });
+    } catch (error: any) {
+      socket.emit('kernel:error', { kernelId, error: error.message });
+    }
+  });
+
   socket.on('disconnect', async () => {
     if (flushBufferTimer) {
       clearTimeout(flushBufferTimer);
@@ -356,6 +427,9 @@ io.on('connection', (socket) => {
     
     // Clean up all session containers for this socket
     await sessionPool.cleanupSession(socket.id);
+    
+    // Clean up all kernels for this socket
+    await kernelManager.shutdownSocketKernels(socket.id);
     
     // Clean up session network
     await deleteSessionNetwork(socket.id).catch(err => 
