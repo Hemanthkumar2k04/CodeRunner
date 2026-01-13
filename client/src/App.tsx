@@ -7,6 +7,7 @@ import { MobileWorkspace } from './components/MobileWorkspace';
 import { Workspace } from './components/Workspace';
 import { CodeEditor } from './components/CodeEditor';
 import { Console } from './components/Console';
+import NetworkMonitor from './components/NetworkMonitor';
 import { useSocket } from './hooks/useSocket';
 import { useEditorStore } from './stores/useEditorStore';
 import type { EditorState } from './stores/useEditorStore';
@@ -261,6 +262,11 @@ function App() {
         <Route path="/" element={
           <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
             <AppContent />
+          </ThemeProvider>
+        } />
+        <Route path="/monitor" element={
+          <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+            <NetworkMonitor />
           </ThemeProvider>
         } />
         <Route path="*" element={<Navigate to="/" replace />} />

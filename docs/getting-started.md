@@ -2,63 +2,71 @@
 
 ## Prerequisites
 
-- **Node.js** v18+
-- **Docker** (installed and running)
-- **npm**
+- **Node.js** v18 or higher
+- **Docker** installed and running
+- **npm** (comes with Node.js)
 
-## Setup
-
-### Automated Setup (Recommended)
+## Quick Setup
 
 ```bash
 git clone <repo-url>
 cd CodeRunner
-chmod +x setup.sh
-sudo ./setup.sh
+./setup.sh
 ```
 
-### Manual Setup
+The setup script will:
+1. Check all prerequisites
+2. Install npm dependencies
+3. Build Docker runtime images
 
-1. **Build Docker images:**
+## Start the Application
+
+Open two terminals:
 
 ```bash
-cd runtimes/python && docker build -t python-runtime .
-cd ../javascript && docker build -t node-runtime .
-cd ../java && docker build -t java-runtime .
-cd ../cpp && docker build -t cpp-runtime .
-cd ../mysql && docker build -t mysql-runtime .
-cd ../..
+# Terminal 1 - Backend
+cd server && npm run dev
+
+# Terminal 2 - Frontend  
+cd client && npm run dev
 ```
 
-2. **Start backend:**
+Then open http://localhost:5173 in your browser.
+
+## Setup Options
 
 ```bash
-cd server && npm install && npm run dev  # http://localhost:3000
+./setup.sh --help              # Show all options
+./setup.sh --skip-docker       # Skip rebuilding Docker images
+./setup.sh --skip-deps         # Skip npm install
+./setup.sh --configure-net     # Configure Docker for 500+ users (requires sudo)
 ```
-
-3. **Start frontend (new terminal):**
-
-```bash
-cd client && npm install && npm run dev  # http://localhost:5173
-```
-
-## Supported Languages
-
-- Python, JavaScript/Node.js, Java, C++, SQL (MySQL)
 
 ## Troubleshooting
 
+**Docker permission denied:**
+```bash
+sudo usermod -aG docker $USER
+# Log out and back in, or run: newgrp docker
+```
+
 **Port already in use:**
-
 ```bash
-lsof -i :3000    # Find & kill process
-kill -9 <PID>
+lsof -i :3000   # Find process using port
+kill -9 <PID>   # Kill it
 ```
 
-**Can't connect to Docker:**
-
+**Docker not running:**
 ```bash
-sudo systemctl start docker  # Linux
+sudo systemctl start docker
 ```
 
-**Frontend can't reach backend:** Ensure both services are running on the same host.
+## High Concurrency Setup
+
+For lab environments with 50+ concurrent users:
+
+```bash
+./setup.sh --configure-net
+```
+
+This expands Docker's network address pools from ~30 to 4000+ concurrent sessions.

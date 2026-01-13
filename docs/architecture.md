@@ -1,66 +1,91 @@
 # Architecture
 
-## System Overview
+## Overview
 
-CodeRunner supports two execution modes:
+CodeRunner executes user code in isolated Docker containers with real-time output streaming via WebSockets.
 
-### Fast Mode (Default - Warm Container Pool)
+```
+┌─────────────┐     WebSocket      ┌─────────────┐     Docker      ┌─────────────┐
+│   Browser   │ ◄───────────────► │   Server    │ ◄─────────────► │  Container  │
+│   (React)   │    Socket.IO      │  (Node.js)  │                 │  (Runtime)  │
+└─────────────┘                   └─────────────┘                 └─────────────┘
+```
 
-1. **Initialization**: Server pre-warms 3 Docker containers per language on startup
-2. **Execution**: When code runs, the frontend sends files + entry point to backend via Socket.io
-3. **Container Acquisition**: Server grabs an idle container from the pool (~0ms overhead)
-4. **Execution**: Files are copied and executed inside container
-5. **Output Streaming**: Stdout/stderr/exit events streamed back via WebSockets
-6. **Cleanup**: Container returned to pool for reuse
+## Execution Flow
 
-### Network Mode (User-Controlled Toggle)
+1. **Connection**: Client connects via Socket.IO, gets unique session ID
+2. **Network Creation**: Isolated Docker bridge network created for session
+3. **Code Submission**: Files sent to server via `run` event
+4. **Container**: On-demand container created, attached to session network
+5. **Execution**: Code compiled/run, stdout/stderr streamed back in real-time
+6. **Cleanup**: Container reused (60s TTL) or deleted, network removed on disconnect
 
-1. **Session Networks**: Each socket connection gets isolated Docker network: `coderunner-session-{socketId}`
-2. **On-Demand Containers**: Containers created when needed and attached to session network
-3. **Socket Programming**: Containers can communicate via localhost (e.g., Java Server/Client)
-4. **Cleanup**: Containers deleted after execution, networks cleaned on disconnect
-5. **Isolation**: Multiple users can use same ports without conflicts
+## Session-Based Container Pool
 
-**Switching Modes**: Users toggle network mode via Navbar button (Wifi icon). Network mode trades ~1-2s startup time for full networking capabilities.
+Each user session gets:
+- **Isolated network**: `coderunner-session-{socketId}`
+- **On-demand containers**: Created when code runs, reused within TTL
+- **Automatic cleanup**: Containers expire after 60s inactivity
 
-## Multi-Console Architecture
+```
+Session Connect → Network Created → Code Run → Container Created → Reused for 60s → Cleanup
+                                                    ↑                    │
+                                                    └────────────────────┘
+```
 
-Each file execution gets its own isolated console:
+## Container Lifecycle
 
-- **Session Tracking**: Each execution assigned unique sessionId
-- **Per-File Consoles**: Console named with file path (e.g., "src/main.py")
-- **Output Limits**: 2,000 entries per console, FIFO eviction when full
-- **Isolation**: Output properly routed by sessionId between server and client
-- **Tab Interface**: Switch between active consoles like VS Code
+| Event | Action |
+|-------|--------|
+| First code run | Create container, attach to session network |
+| Subsequent runs | Reuse existing container, refresh TTL |
+| 60s inactivity | Container auto-deleted |
+| Disconnect | Immediate container + network cleanup |
+
+## Security Model
+
+| Layer | Protection |
+|-------|-----------|
+| **Network** | Each session has isolated Docker bridge network |
+| **Resources** | CPU: 0.5 cores, Memory: 128MB per container |
+| **Execution** | 30-second timeout per execution |
+| **Cleanup** | Automatic removal of expired containers/networks |
+
+## Project Structure
+
+```
+CodeRunner/
+├── client/                 # React frontend (Vite + TypeScript)
+│   ├── src/
+│   │   ├── components/    # UI components (CodeEditor, Console, Workspace)
+│   │   ├── hooks/         # useSocket (WebSocket connection)
+│   │   ├── stores/        # Zustand state (useEditorStore)
+│   │   └── lib/           # Utilities
+│   └── package.json
+├── server/                 # Node.js backend
+│   ├── src/
+│   │   ├── index.ts       # Socket.IO server, execution handler
+│   │   ├── pool.ts        # Container pool with TTL management
+│   │   ├── networkManager.ts  # Docker network lifecycle
+│   │   ├── kernelManager.ts   # Notebook kernel support
+│   │   └── config.ts      # Configuration
+│   └── package.json
+├── runtimes/              # Docker images for each language
+│   ├── python/
+│   ├── javascript/
+│   ├── java/
+│   ├── cpp/
+│   └── mysql/
+├── docs/                  # Documentation
+└── setup.sh               # One-command setup script
+```
 
 ## Performance
 
-### Fast Mode (Pool)
-
-- **Cold Start**: N/A (pre-warmed)
-- **Execution**: `docker cp` + `docker exec` (~100ms)
-- **Network**: Disabled (`--network none`)
-
-### Network Mode (Session)
-
-- **First Run**: `docker network create` + `docker run` (~1-2s)
-- **Execution**: `docker cp` + `docker exec` (~100-200ms)
-- **Network**: Enabled (bridge network per session)
-
-- **Virtualization**: React Virtual renders only visible rows (~30 rows visible, 10,000+ supported)
-
-## Security
-
-### Fast Mode
-
-- **Network Isolation**: `--network none` on all containers
-- **Resource Limits**: CPU (0.5) and memory (128MB) capped per container
-- **Ephemeral Execution**: Containers returned to pool, cleaned periodically
-
-### Network Mode
-
-- **Session Isolation**: Each user gets unique Docker network (random socket ID)
-- **No Cross-User Access**: Networks completely isolated from each other
-- **Resource Limits**: Same CPU/memory limits as fast mode
-- **Cleanup**: Containers deleted immediately, networks removed on disconnect or after 1 hour
-- **Execution Timeout**: Same 30-second timeout per execution
+| Metric | Value |
+|--------|-------|
+| First execution | ~1-2s (container creation) |
+| Subsequent runs | ~200-400ms (container reuse) |
+| Container TTL | 60 seconds |
+| Cleanup interval | 30 seconds |
+| Max concurrent sessions | ~30 (default), 4000+ (with `--configure-net`) |

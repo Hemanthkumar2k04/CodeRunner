@@ -8,7 +8,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { sessionPool } from './pool';
 import { config } from './config';
-import { getOrCreateSessionNetwork, deleteSessionNetwork, getNetworkName, cleanupOrphanedNetworks } from './networkManager';
+import { getOrCreateSessionNetwork, deleteSessionNetwork, getNetworkName, cleanupOrphanedNetworks, getNetworkStats } from './networkManager';
 import { kernelManager } from './kernelManager';
 
 const execAsync = promisify(exec);
@@ -402,6 +402,20 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', version: '1.0.0' });
 });
 
+// Network monitoring endpoint
+app.get('/api/network-stats', async (req, res) => {
+  try {
+    const stats = await getNetworkStats();
+    res.json({
+      status: 'ok',
+      networks: stats,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // API endpoint for code execution - networking always enabled
 app.post('/api/run', async (req, res) => {
   const { language, files } = req.body;
@@ -621,17 +635,29 @@ if (require.main === module) {
       await sessionPool.cleanupExpiredContainers();
     }, config.sessionContainers.cleanupInterval);
 
-    // Periodic cleanup of orphaned networks (every 30 minutes)
+    // Cleanup orphaned networks every 2 minutes
     const networkCleanupInterval = setInterval(async () => {
-      console.log('[Cleanup] Running periodic network cleanup...');
-      await cleanupOrphanedNetworks(config.sessionContainers.autoCleanup ? 1800000 : 0);
-    }, 30 * 60 * 1000);
+      await cleanupOrphanedNetworks(300000).catch(err => 
+        console.error('[Cleanup Job] Orphaned networks cleanup failed:', err)
+      );
+    }, 120000);
+
+    // Log network statistics every 5 minutes for monitoring
+    const networkStatsInterval = setInterval(async () => {
+      try {
+        const stats = await getNetworkStats();
+        console.log(`[Network Stats] Total: ${stats.total}, Active: ${stats.withContainers}, Unused: ${stats.empty}`);
+      } catch (err) {
+        console.error('[Stats Job] Failed to get network stats:', err);
+      }
+    }, 300000);
 
     // Handle graceful shutdown
     const gracefulShutdown = async () => {
       console.log('\nShutting down server...');
       clearInterval(ttlCleanupInterval);
       clearInterval(networkCleanupInterval);
+      clearInterval(networkStatsInterval);
       await sessionPool.cleanupAll();
       await cleanupOrphanedNetworks(0); // Clean up all networks on shutdown
       server.close(() => {

@@ -41,7 +41,8 @@ interface NotebookCellProps {
 
 export function NotebookCell({
   cell,
-  index,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  index: _index,
   isActive,
   isRunning,
   executionCount,
@@ -203,11 +204,10 @@ export function NotebookCell({
                 lineNumbers: 'on',
                 glyphMargin: false,
                 folding: false,
-                lineDecorationsWidth: 0,
+                lineDecorationsWidth: 10,
                 lineNumbersMinChars: 4,
                 renderLineHighlight: 'none',
                 overviewRulerBorder: false,
-                lineDecorationsWidth: 10,
                 hideCursorInOverviewRuler: true,
                 overviewRulerLanes: 0,
                 scrollbar: {

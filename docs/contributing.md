@@ -1,44 +1,55 @@
 # Contributing
 
-We welcome contributions!
-
-## Setup
+## Development Setup
 
 1. Fork and clone the repository
-2. Create a feature branch: `git checkout -b feature/my-feature`
-3. Install dependencies:
-   ```bash
-   cd client && npm install
-   cd ../server && npm install
-   ```
-4. Build Docker images: `cd runtimes && ./build-all.sh`
-5. Start dev servers:
+2. Run `./setup.sh` to set up the environment
+3. Create a feature branch: `git checkout -b feature/my-feature`
 
-   ```bash
-   # Terminal 1
-   cd server && npm run dev
+## Project Structure
 
-   # Terminal 2
-   cd client && npm run dev
-   ```
+- `client/` - React frontend (Vite, TypeScript, Tailwind)
+- `server/` - Node.js backend (Socket.IO, Docker)
+- `runtimes/` - Dockerfiles for each language runtime
+- `docs/` - Documentation
 
-## Before Submitting
+## Development Commands
 
-- Follow existing code style (TypeScript, React hooks conventions)
-- Test your changes on at least 2 languages
-- Update relevant docs in `/docs`
-- Run `npm run build` in both client and server to verify compilation
+```bash
+# Server (with hot reload)
+cd server && npm run dev
 
-## PR Process
+# Client (with hot reload)
+cd client && npm run dev
 
-1. Make your changes with clear commit messages
-2. Push to your fork
-3. Open a PR with description of changes
-4. Address any review feedback
+# Build server
+cd server && npm run build
 
-## Adding a New Language
+# Lint client
+cd client && npm run lint
+```
 
-1. Create `runtimes/language/Dockerfile`
-2. Add to `server/src/config.ts`
-3. Test execution with sample code
-4. Update docs
+## Adding a New Language Runtime
+
+1. Create `runtimes/<language>/Dockerfile`
+2. Add image name to `server/src/config.ts`
+3. Update `setup.sh` to build the new image
+4. Add file extension mapping in `client/src/lib/file-utils.ts`
+
+## Code Style
+
+- TypeScript for both frontend and backend
+- Use existing patterns from the codebase
+- Keep functions small and focused
+- Add comments for complex logic
+
+## Pull Request Process
+
+1. Ensure all tests pass
+2. Update documentation if needed
+3. Create PR with clear description
+4. Wait for review
+
+## Questions?
+
+Open an issue on GitHub.
