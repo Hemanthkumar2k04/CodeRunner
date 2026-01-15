@@ -162,6 +162,7 @@ cp server/.env.example server/.env
 ```
 
 **Key Settings:**
+
 - `PORT`, `HOST` - Server binding (default: 3000)
 - `DOCKER_MEMORY` - Container memory (default: 128m)
 - `DOCKER_CPUS` - CPU allocation (default: 0.5)
@@ -181,22 +182,26 @@ See `.env.example` for 50+ configuration options with detailed documentation.
 ## 📊 Performance & Scalability
 
 **Container Execution:**
+
 - First execution: ~1-2s (on-demand creation)
 - Subsequent runs: ~200-400ms (container reuse)
 - 60-second TTL with automatic cleanup
 
 **Network Architecture:**
+
 - Explicit subnet allocation from pre-configured Docker pools
 - Pool 1: `172.80.0.0/12` (4,096 /24 subnets)
 - Pool 2: `10.10.0.0/16` (256 /24 subnets)
 - **Total capacity: 4,352 concurrent sessions**
 
 **Resource Limits:**
+
 - Standard containers: 128MB memory, 0.5 CPU cores
 - Notebook kernels: 256MB memory, 1 CPU core
 - Timeout: 30 seconds per execution
 
 **Verified Performance:**
+
 - Load test: 40 concurrent users = 100% success rate
 - Subnet allocation: 0.98% utilization for 40 users
 - Zero race conditions with explicit subnet allocation

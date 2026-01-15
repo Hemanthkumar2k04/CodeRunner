@@ -44,6 +44,7 @@ Then open http://localhost:5173 in your browser.
 ```
 
 The setup script now includes:
+
 - Automatic cache cleanup after building images
 - Docker build cache pruning
 - npm cache cleaning
@@ -58,6 +59,7 @@ cp server/.env.example server/.env
 ```
 
 Edit `server/.env` to customize:
+
 - Server port and host
 - Docker container resource limits
 - Session TTL and cleanup intervals
@@ -97,6 +99,7 @@ For lab environments with 50+ concurrent users:
 ```
 
 This configures Docker with custom address pools supporting 4,352 concurrent sessions:
+
 - Pool 1: `172.80.0.0/12` (4,096 /24 subnets)
 - Pool 2: `10.10.0.0/16` (256 /24 subnets)
 

@@ -14,6 +14,7 @@ CodeRunner executes user code in isolated Docker containers with real-time outpu
 ## Network Architecture
 
 **Subnet Allocation System:**
+
 - Pre-configured Docker pools: `172.80.0.0/12` and `10.10.0.0/16`
 - Explicit /24 subnet assignment to each session
 - Deterministic allocation with counters (race-condition safe)
@@ -21,6 +22,7 @@ CodeRunner executes user code in isolated Docker containers with real-time outpu
 - Total capacity: **4,352 concurrent sessions**
 
 **Session Isolation:**
+
 ```
 Each session gets:
 ├── Unique Docker bridge network (explicit subnet)
@@ -65,23 +67,28 @@ Session Connect → Network Created → Code Run → Container Created → Reuse
 All backend settings are centralized in `config.ts` with environment variable overrides:
 
 **Server Configuration:**
+
 - Port, host, environment, logging level
 
 **Docker Resources:**
+
 - Memory limits per container type
 - CPU allocation per container type
 - Command execution timeout
 
 **Network Configuration:**
+
 - Subnet pool definitions with capacity tracking
 - Network prefix, driver, and label customization
 
 **Session Management:**
+
 - Container TTL and cleanup intervals
 - Max containers per session
 - Orphaned network cleanup threshold
 
 **Runtime Images:**
+
 - Configurable Docker image names for all languages
 - File size and count limits per session
 
@@ -118,13 +125,13 @@ CodeRunner/
 
 ## Performance Metrics
 
-| Aspect | Detail |
-| --- | --- |
-| **First Execution** | ~1-2s (container creation + compilation) |
-| **Reused Execution** | ~200-400ms (existing container) |
-| **Container TTL** | 60 seconds (auto-cleanup) |
-| **Memory per Container** | 128MB (standard), 256MB (notebooks) |
-| **CPU per Container** | 0.5 cores (standard), 1 core (notebooks) |
-| **Execution Timeout** | 30 seconds per run |
-| **Network Capacity** | 4,352 concurrent subnets |
-| **Load Test Result** | 40 concurrent users = 100% success |
+| Aspect                   | Detail                                   |
+| ------------------------ | ---------------------------------------- |
+| **First Execution**      | ~1-2s (container creation + compilation) |
+| **Reused Execution**     | ~200-400ms (existing container)          |
+| **Container TTL**        | 60 seconds (auto-cleanup)                |
+| **Memory per Container** | 128MB (standard), 256MB (notebooks)      |
+| **CPU per Container**    | 0.5 cores (standard), 1 core (notebooks) |
+| **Execution Timeout**    | 30 seconds per run                       |
+| **Network Capacity**     | 4,352 concurrent subnets                 |
+| **Load Test Result**     | 40 concurrent users = 100% success       |
