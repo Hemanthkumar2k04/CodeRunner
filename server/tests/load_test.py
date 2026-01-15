@@ -671,9 +671,7 @@ class LoadTestRunner:
         print(f"  Students: {self.num_students}")
         print(f"  Mode: {self.mode.upper()}")
         if self.mode == "ramp":
-            print(
-                f"  Ramp: {self.ramp_batch_size} users every {self.ramp_interval}s"
-            )
+            print(f"  Ramp: {self.ramp_batch_size} users every {self.ramp_interval}s")
         print(f"{'='*60}\n")
 
         start_time = time.time()
@@ -757,11 +755,11 @@ class LoadTestRunner:
     async def _run_ramp_mode(self, assignments: list[tuple[str, dict]]):
         """Gradually add users over time"""
         print(f"[2/4] Starting ramp-up mode...")
-        print(
-            f"       Adding {self.ramp_batch_size} users every {self.ramp_interval}s"
-        )
+        print(f"       Adding {self.ramp_batch_size} users every {self.ramp_interval}s")
 
-        total_batches = (self.num_students + self.ramp_batch_size - 1) // self.ramp_batch_size
+        total_batches = (
+            self.num_students + self.ramp_batch_size - 1
+        ) // self.ramp_batch_size
         active_tasks = []
 
         for batch_num in range(total_batches):
@@ -769,7 +767,9 @@ class LoadTestRunner:
             end_idx = min(start_idx + self.ramp_batch_size, self.num_students)
             batch_size = end_idx - start_idx
 
-            print(f"\n[3/4] Batch {batch_num + 1}/{total_batches}: Adding {batch_size} users...")
+            print(
+                f"\n[3/4] Batch {batch_num + 1}/{total_batches}: Adding {batch_size} users..."
+            )
 
             # Connect new batch of students
             batch_students = []
@@ -780,7 +780,9 @@ class LoadTestRunner:
 
             # Connect students in this batch
             connect_tasks = [s.connect() for s in batch_students]
-            connect_results = await asyncio.gather(*connect_tasks, return_exceptions=True)
+            connect_results = await asyncio.gather(
+                *connect_tasks, return_exceptions=True
+            )
             connected = sum(1 for r in connect_results if r is True)
             print(f"       Connected: {connected}/{batch_size}")
 
@@ -800,7 +802,9 @@ class LoadTestRunner:
 
         # Wait for all remaining tasks to complete
         if active_tasks:
-            print(f"\n       Waiting for all {len(active_tasks)} executions to complete...")
+            print(
+                f"\n       Waiting for all {len(active_tasks)} executions to complete..."
+            )
             await asyncio.gather(*active_tasks, return_exceptions=True)
 
     def _generate_report(
@@ -895,7 +899,9 @@ class LoadTestRunner:
 
         mode_info = f"Mode: {report.mode.upper()}"
         if report.mode == "ramp" and report.ramp_interval and report.ramp_batch_size:
-            mode_info += f" ({report.ramp_batch_size} users every {report.ramp_interval}s)"
+            mode_info += (
+                f" ({report.ramp_batch_size} users every {report.ramp_interval}s)"
+            )
 
         html = f"""<!DOCTYPE html>
 <html lang="en">
