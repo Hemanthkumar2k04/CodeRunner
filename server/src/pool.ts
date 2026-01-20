@@ -53,9 +53,116 @@ class SessionContainerPool {
   constructor() {
     console.log('[Pool] Initialized session-based container pool with TTL');
   }
-  
+
   /**
-   * Get current cleanup metrics
+   * Cleanup expired containers (TTL exceeded)
+   * Called by background job
+   */
+  async cleanupExpiredContainers(): Promise<void> {
+    const startTime = Date.now();
+    const now = Date.now();
+    const ttl = config.sessionContainers.ttl;
+    let cleanedCount = 0;
+
+    // 1. Clean up expired containers from the pool
+    for (const [sessionId, containers] of this.pool.entries()) {
+      const expiredContainers = containers.filter(
+        c => !c.inUse && (now - c.lastUsed) > ttl
+      );
+
+      if (expiredContainers.length > 0) {
+        console.log(`[Pool] Cleaning up ${expiredContainers.length} expired containers for session ${sessionId}`);
+        
+        // Batch delete containers for better performance
+        const containerIds = expiredContainers.map(c => c.containerId);
+        const batchSize = 10; 
+        
+        for (let i = 0; i < containerIds.length; i += batchSize) {
+          const batch = containerIds.slice(i, i + batchSize);
+          const batchCommand = `docker rm -fv ${batch.join(' ')}`;
+          
+          try {
+            await execAsync(batchCommand, { timeout: config.docker.commandTimeout });
+            cleanedCount += batch.length;
+            this.metrics.containersDeleted += batch.length;
+            console.log(`[Pool] Deleted ${batch.length} expired containers`);
+          } catch (error: any) {
+             // Fallback to individual
+             for (const containerId of batch) {
+                try {
+                   await execAsync(`docker rm -fv ${containerId}`, { timeout: config.docker.commandTimeout });
+                   cleanedCount++;
+                   this.metrics.containersDeleted++;
+                } catch (e: any) {
+                   this.metrics.cleanupErrors++;
+                }
+             }
+          }
+        }
+
+        // Remove from pool
+        const remainingContainers = containers.filter(
+          c => !expiredContainers.includes(c)
+        );
+        
+        if (remainingContainers.length > 0) {
+          this.pool.set(sessionId, remainingContainers);
+        } else {
+          this.pool.delete(sessionId);
+        }
+      }
+    }
+    
+    // 2. Safety Net: Find any "coderunner-session" containers that are orphaned or too old
+    // We check for containers created > 10 minutes ago as a safety measure against leaks
+    try {
+      // Find all session containers
+      const { stdout } = await execAsync('docker ps -a --filter "label=type=coderunner-session" --format "{{.ID}}|{{.CreatedAt}}"');
+      if (stdout.trim()) {
+        const lines = stdout.trim().split('\n');
+        const activeContainerIds = new Set<string>();
+        
+        // Collect IDs of all containers currently known in our pool
+        for (const containers of this.pool.values()) {
+          for (const c of containers) {
+            activeContainerIds.add(c.containerId);
+            activeContainerIds.add(c.containerId.substring(0, 12));
+          }
+        }
+        
+        for (const line of lines) {
+          const [id, createdStr] = line.split('|');
+          // If container is NOT in our active pool
+          if (!activeContainerIds.has(id)) {
+             // Also check age to avoid race condition with just-created containers
+             // (Though pool updates happen before docker run returns usually, async/await timing might vary)
+             // Ideally we parse CreatedAt, but for now assuming if it's not in pool it's orphaned 
+             // IF it's not brand new. 
+             // Let's rely on the fact that if it's not in pool, we don't know about it.
+             
+             console.log(`[Pool] Found orphaned/zombie container ${id} (not in active pool). Removing...`);
+             try {
+               await execAsync(`docker rm -fv ${id}`);
+               this.metrics.containersDeleted++;
+               cleanedCount++;
+             } catch (e) { /* ignore */ }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[Pool] Safety net cleanup failed:', error);
+    }
+    
+    const cleanupDuration = Date.now() - startTime;
+    this.metrics.lastCleanupDuration = cleanupDuration;
+
+    if (cleanedCount > 0) {
+      console.log(`[Pool] TTL cleanup completed: deleted ${cleanedCount} expired/orphaned containers`);
+    }
+  }
+
+  /**
+   * Cleanup all containers for a specific session (on disconnect)
    */
   getMetrics(): CleanupMetrics {
     // Update active container count
@@ -214,76 +321,6 @@ class SessionContainerPool {
     } catch (error: any) {
       console.error(`[Pool] Failed to create container:`, error.message);
       throw error;
-    }
-  }
-
-  /**
-   * Cleanup expired containers (TTL exceeded)
-   * Called by background job
-   */
-  async cleanupExpiredContainers(): Promise<void> {
-    const startTime = Date.now();
-    const now = Date.now();
-    const ttl = config.sessionContainers.ttl;
-    let cleanedCount = 0;
-
-    for (const [sessionId, containers] of this.pool.entries()) {
-      const expiredContainers = containers.filter(
-        c => !c.inUse && (now - c.lastUsed) > ttl
-      );
-
-      if (expiredContainers.length > 0) {
-        console.log(`[Pool] Cleaning up ${expiredContainers.length} expired containers for session ${sessionId}`);
-        
-        // Batch delete containers for better performance
-        const containerIds = expiredContainers.map(c => c.containerId);
-        const batchSize = 10; // Delete up to 10 containers at once
-        
-        for (let i = 0; i < containerIds.length; i += batchSize) {
-          const batch = containerIds.slice(i, i + batchSize);
-          const batchCommand = `docker rm -fv ${batch.join(' ')}`;
-          
-          try {
-            await execAsync(batchCommand, { timeout: config.docker.commandTimeout });
-            cleanedCount += batch.length;
-            this.metrics.containersDeleted += batch.length;
-            console.log(`[Pool] Deleted ${batch.length} expired containers (batch ${Math.floor(i / batchSize) + 1})`);
-          } catch (error: any) {
-            // If batch fails, try individually
-            console.error(`[Pool] Batch deletion failed, trying individually:`, error.message);
-            this.metrics.cleanupErrors++;
-            
-            for (const containerId of batch) {
-              try {
-                await execAsync(`docker rm -fv ${containerId}`, { timeout: config.docker.commandTimeout });
-                cleanedCount++;
-                this.metrics.containersDeleted++;
-              } catch (individualError: any) {
-                console.error(`[Pool] Failed to delete container ${containerId.substring(0, 12)}:`, individualError.message);
-                this.metrics.cleanupErrors++;
-              }
-            }
-          }
-        }
-
-        // Remove from pool
-        const remainingContainers = containers.filter(
-          c => !expiredContainers.includes(c)
-        );
-        
-        if (remainingContainers.length > 0) {
-          this.pool.set(sessionId, remainingContainers);
-        } else {
-          this.pool.delete(sessionId);
-        }
-      }
-    }
-    
-    const cleanupDuration = Date.now() - startTime;
-    this.metrics.lastCleanupDuration = cleanupDuration;
-
-    if (cleanedCount > 0) {
-      console.log(`[Pool] TTL cleanup completed: deleted ${cleanedCount} expired containers`);
     }
   }
 

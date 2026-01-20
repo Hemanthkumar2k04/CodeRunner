@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { exec, spawn } from 'child_process';
+import { exec, spawn, execSync } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -13,6 +13,20 @@ import { kernelManager } from './kernelManager';
 
 // Validate configuration at startup
 validateConfig();
+
+// Run aggressive cleanup on startup
+try {
+  console.log('[Server] Running startup cleanup...');
+  const cleanupScript = path.resolve(__dirname, '../../cleanup.sh');
+  if (fs.existsSync(cleanupScript)) {
+    execSync(`${cleanupScript} --silent`, { stdio: 'inherit' });
+    console.log('[Server] Startup cleanup completed');
+  } else {
+    console.warn('[Server] Cleanup script not found at:', cleanupScript);
+  }
+} catch (error) {
+  console.error('[Server] Startup cleanup failed:', error);
+}
 
 const execAsync = promisify(exec);
 
