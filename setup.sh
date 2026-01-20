@@ -27,8 +27,18 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
+# Helper for portable logging
+log_info() { printf "${BLUE}[INFO]${NC} %s\n" "$1"; }
+log_success() { printf "${GREEN}[SUCCESS]${NC} %s\n" "$1"; }
+log_warn() { printf "${YELLOW}[WARN]${NC} %s\n" "$1"; }
+log_error() { printf "${RED}[ERROR]${NC} %s\n" "$1"; }
+
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Ensure helper scripts are executable
+chmod +x "${SCRIPT_DIR}/cleanup.sh" 2>/dev/null || true
+chmod +x "${SCRIPT_DIR}/server/tests/run_load_test.sh" 2>/dev/null || true
 
 # Default options
 SKIP_DOCKER=false
@@ -63,211 +73,155 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            echo -e "${RED}Unknown option: $1${NC}"
+            log_error "Unknown option: $1"
             exit 1
             ;;
     esac
 done
 
 # Header
-echo -e "${CYAN}"
+printf "${CYAN}"
 echo "╔═══════════════════════════════════════════════════════════╗"
 echo "║                  CodeRunner Setup                         ║"
 echo "╚═══════════════════════════════════════════════════════════╝"
-echo -e "${NC}"
+printf "${NC}\n"
 
 # ─────────────────────────────────────────────────────────────────
 # Step 1: Check Prerequisites
 # ─────────────────────────────────────────────────────────────────
-echo -e "${BLUE}[1/4] Checking prerequisites...${NC}"
+log_info "Step 1/4: Checking prerequisites..."
 
 # Check Node.js
 if ! command -v node &> /dev/null; then
-    echo -e "${RED}✗ Node.js is not installed${NC}"
+    log_error "Node.js is not installed"
     echo "  Install from: https://nodejs.org/ (v18+ required)"
     exit 1
 fi
+
 NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
 if [ "$NODE_VERSION" -lt 18 ]; then
-    echo -e "${RED}✗ Node.js v18+ required (found v$NODE_VERSION)${NC}"
+    log_error "Node.js v18+ required (found v$NODE_VERSION)"
     exit 1
 fi
-echo -e "  ${GREEN}✓${NC} Node.js $(node -v)"
+log_success "Node.js $(node -v)"
 
 # Check npm
 if ! command -v npm &> /dev/null; then
-    echo -e "${RED}✗ npm is not installed${NC}"
+    log_error "npm is not installed"
     exit 1
 fi
-echo -e "  ${GREEN}✓${NC} npm $(npm -v)"
+log_success "npm $(npm -v)"
 
 # Check Docker
 if ! command -v docker &> /dev/null; then
-    echo -e "${RED}✗ Docker is not installed${NC}"
-    echo "  Install from: https://docs.docker.com/get-docker/"
+    log_error "Docker is not installed"
+    echo "  Install Docker Desktop or Engine from: https://docs.docker.com/get-docker/"
     exit 1
 fi
-echo -e "  ${GREEN}✓${NC} Docker $(docker --version | cut -d' ' -f3 | tr -d ',')"
 
-# Check Docker daemon
-if ! docker info &> /dev/null; then
-    echo -e "${RED}✗ Docker daemon is not running${NC}"
-    echo "  Start with: sudo systemctl start docker"
+# Check Docker Permissions
+if ! docker ps >/dev/null 2>&1; then
+    log_error "Cannot connect to Docker daemon"
+    echo "  Possible reasons:"
+    echo "  1. Docker is not running"
+    echo "  2. Current user is not in 'docker' group (Run: sudo usermod -aG docker \$USER)"
     exit 1
 fi
-echo -e "  ${GREEN}✓${NC} Docker daemon running"
-
-# Check Docker permissions (non-root)
-if ! docker ps &> /dev/null; then
-    echo -e "${YELLOW}⚠ Docker requires sudo or docker group membership${NC}"
-    echo "  Add your user to docker group: sudo usermod -aG docker \$USER"
-    echo "  Then log out and back in, or run: newgrp docker"
-    exit 1
-fi
+log_success "Docker ($(docker --version | cut -d' ' -f3 | tr -d ','))"
 
 # ─────────────────────────────────────────────────────────────────
 # Step 2: Install Dependencies
 # ─────────────────────────────────────────────────────────────────
 if [ "$SKIP_DEPS" = false ]; then
-    echo -e "\n${BLUE}[2/4] Installing dependencies...${NC}"
+    echo ""
+    log_info "Step 2/4: Installing dependencies..."
     
-    # Load nvm if available
-    if [ -s "$HOME/.nvm/nvm.sh" ]; then
-        . "$HOME/.nvm/nvm.sh"
-        if [ -f "$SCRIPT_DIR/.nvmrc" ]; then
-            nvm use 2>/dev/null || nvm install
-        fi
+    # Server Dependencies
+    if [ -d "${SCRIPT_DIR}/server" ]; then
+        log_info "Installing server dependencies..."
+        (cd "${SCRIPT_DIR}/server" && npm install)
+    else
+        log_warn "Server directory not found!"
     fi
     
-    # Server dependencies
-    echo -e "  ${CYAN}→${NC} Installing server dependencies..."
-    cd "$SCRIPT_DIR/server"
-    npm ci --silent 2>/dev/null || npm install --silent
-    
-    # Client dependencies
-    echo -e "  ${CYAN}→${NC} Installing client dependencies..."
-    cd "$SCRIPT_DIR/client"
-    npm ci --silent 2>/dev/null || npm install --silent
-    
-    cd "$SCRIPT_DIR"
-    echo -e "  ${GREEN}✓${NC} Dependencies installed"
+    # Client Dependencies
+    if [ -d "${SCRIPT_DIR}/client" ]; then
+        log_info "Installing client dependencies..."
+        (cd "${SCRIPT_DIR}/client" && npm install)
+    else
+        log_warn "Client directory not found!"
+    fi
 else
-    echo -e "\n${YELLOW}[2/4] Skipping dependencies (--skip-deps)${NC}"
+    echo ""
+    log_info "Step 2/4: Skipping dependencies installation"
 fi
 
 # ─────────────────────────────────────────────────────────────────
-# Step 3: Build Docker Images
+# Step 3: Build Runtime Images
 # ─────────────────────────────────────────────────────────────────
 if [ "$SKIP_DOCKER" = false ]; then
-    echo -e "\n${BLUE}[3/4] Building Docker runtime images...${NC}"
+    echo ""
+    log_info "Step 3/4: Building runtime images..."
     
-    RUNTIMES=(
-        "python:python-runtime"
-        "javascript:node-runtime"
-        "java:java-runtime"
-        "cpp:cpp-runtime"
-        "mysql:mysql-runtime"
-    )
-    
-    for runtime in "${RUNTIMES[@]}"; do
-        DIR="${runtime%%:*}"
-        IMAGE="${runtime##*:}"
-        echo -e "  ${CYAN}→${NC} Building $IMAGE..."
-        docker build -t "$IMAGE" "$SCRIPT_DIR/runtimes/$DIR" --quiet
-    done
-    
-    echo -e "  ${GREEN}✓${NC} All runtime images built"
-    
-    # Clean up Docker build cache
-    echo -e "  ${CYAN}→${NC} Cleaning Docker build cache..."
-    docker builder prune --force -a --quiet 2>/dev/null || true
-    echo -e "  ${GREEN}✓${NC} Docker build cache cleaned"
+    RUNTIMES_DIR="${SCRIPT_DIR}/runtimes"
+    if [ -d "$RUNTIMES_DIR" ]; then
+        for runtime in "$RUNTIMES_DIR"/*; do
+            if [ -d "$runtime" ]; then
+                lang=$(basename "$runtime")
+                image_name="${lang}-runtime"
+                
+                log_info "Building ${image_name}..."
+                if docker build -q -t "$image_name" "$runtime" > /dev/null; then
+                     log_success "Built ${image_name}"
+                else
+                     log_error "Failed to build ${image_name}"
+                     exit 1
+                fi
+            fi
+        done
+    else
+        log_warn "Runtimes directory not found at $RUNTIMES_DIR"
+    fi
 else
-    echo -e "\n${YELLOW}[3/4] Skipping Docker images (--skip-docker)${NC}"
+    echo ""
+    log_info "Step 3/4: Skipping Docker build"
 fi
 
 # ─────────────────────────────────────────────────────────────────
-# Step 4: Configure Docker Networking (Optional)
+# Step 4: System Configuration (Optional)
 # ─────────────────────────────────────────────────────────────────
 if [ "$CONFIGURE_NET" = true ]; then
-    echo -e "\n${BLUE}[4/4] Configuring Docker networking for high concurrency...${NC}"
+    echo ""
+    log_info "Step 4/4: Configuring Network Limits..."
     
-    DAEMON_JSON="/etc/docker/daemon.json"
-    
-    # Check if running with sudo capability
-    if ! sudo -n true 2>/dev/null; then
-        echo -e "${YELLOW}  This step requires sudo access.${NC}"
-        echo "  Enter your password to continue, or Ctrl+C to skip."
-    fi
-    
-    # Backup existing config
-    if [ -f "$DAEMON_JSON" ]; then
-        BACKUP="${DAEMON_JSON}.backup.$(date +%Y%m%d-%H%M%S)"
-        echo -e "  ${CYAN}→${NC} Backing up existing daemon.json..."
-        sudo cp "$DAEMON_JSON" "$BACKUP"
-    fi
-    
-    # Create new config
-    echo -e "  ${CYAN}→${NC} Writing new Docker daemon config..."
-    sudo tee "$DAEMON_JSON" > /dev/null <<'EOF'
-{
-  "default-address-pools": [
-    { "base": "172.80.0.0/12", "size": 24 },
-    { "base": "10.10.0.0/16", "size": 24 }
-  ],
-  "log-driver": "json-file",
-  "log-opts": { "max-size": "10m", "max-file": "3" }
-}
-EOF
-    
-    # Restart Docker
-    echo -e "  ${CYAN}→${NC} Restarting Docker daemon..."
-    sudo systemctl restart docker
-    
-    # Wait for Docker to be ready
-    sleep 2
-    if docker info &> /dev/null; then
-        echo -e "  ${GREEN}✓${NC} Docker configured for 4,000+ concurrent networks"
+    # Check for sudo
+    if [ "$EUID" -ne 0 ]; then 
+        log_warn "Root privileges needed to configure sysctl limits."
+        echo "Please run: sudo $0 --configure-net"
     else
-        echo -e "  ${RED}✗${NC} Docker failed to restart. Check: sudo systemctl status docker"
-        exit 1
+        echo "Applying sysctl settings for high concurrency..."
+        if [ "$(uname)" == "Linux" ]; then
+            sysctl -w net.ipv4.ip_local_port_range="1024 65535"
+            sysctl -w net.netfilter.nf_conntrack_max=1048576
+            log_success "Network limits updated"
+        else
+            log_warn "Network configuration only supported on Linux"
+        fi
     fi
 else
-    echo -e "\n${YELLOW}[4/4] Skipping network config (use --configure-net for high concurrency)${NC}"
+    echo ""
+    log_info "Step 4/4: Configuration skipped (use --configure-net to enable)"
 fi
 
-# ─────────────────────────────────────────────────────────────────
-# Step 5: Clean Up Caches and Unused Resources
-# ─────────────────────────────────────────────────────────────────
-echo -e "\n${BLUE}[5/5] Cleaning up caches and unused resources...${NC}"
-
-# Clean npm cache (optional but helpful for fresh builds)
-echo -e "  ${CYAN}→${NC} Cleaning npm cache..."
-npm cache clean --force --silent 2>/dev/null || true
-echo -e "  ${GREEN}✓${NC} npm cache cleaned"
-
-# Prune dangling Docker images and build cache
-echo -e "  ${CYAN}→${NC} Pruning unused Docker images..."
-docker image prune -f --quiet 2>/dev/null || true
-echo -e "  ${GREEN}✓${NC} Unused Docker images pruned"
-
-# Clean up Docker volumes that are unused (but keep named volumes)
-echo -e "  ${CYAN}→${NC} Pruning unused Docker volumes..."
-docker volume prune -f --quiet 2>/dev/null || true
-echo -e "  ${GREEN}✓${NC} Unused Docker volumes pruned"
-
-# Clean npm node_modules cache in directories
-echo -e "  ${CYAN}→${NC} Cleaning workspace cache directories..."
-find "$SCRIPT_DIR" -type d -name ".npm" -exec rm -rf {} + 2>/dev/null || true
-find "$SCRIPT_DIR" -type d -name "node_modules/.cache" -exec rm -rf {} + 2>/dev/null || true
-echo -e "  ${GREEN}✓${NC} Cache directories cleaned"
-echo -e "\n${GREEN}╔═══════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║                  Setup Complete! ✓                        ║${NC}"
-echo -e "${GREEN}╚═══════════════════════════════════════════════════════════╝${NC}"
 echo ""
-echo -e "Start the application:"
-echo -e "  ${CYAN}Terminal 1:${NC} cd server && npm run dev"
-echo -e "  ${CYAN}Terminal 2:${NC} cd client && npm run dev"
+printf "${GREEN}"
+echo "╔═══════════════════════════════════════════════════════════╗"
+echo "║             Setup Completed Successfully!                 ║"
+echo "╚═══════════════════════════════════════════════════════════╝"
+printf "${NC}\n"
+echo "To start the development server:"
+echo "  cd server && npm run dev"
 echo ""
-echo -e "Then open ${BLUE}http://localhost:5173${NC} in your browser."
+echo "To start the client:"
+echo "  cd client && npm run dev"
 echo ""
