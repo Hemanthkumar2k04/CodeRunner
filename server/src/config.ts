@@ -74,7 +74,7 @@ export const config = {
       language: 'cpp',
     },
     javascript: {
-      image: process.env.NODE_RUNTIME_IMAGE || 'node-runtime',
+      image: process.env.NODE_RUNTIME_IMAGE || 'javascript-runtime',
       language: 'javascript',
     },
     java: {

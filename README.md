@@ -111,7 +111,19 @@ For detailed information about the project, please refer to the documentation in
 - [**Architecture & Design**](docs/architecture.md): Project structure, execution flow, and security features.
 - [**Tech Stack**](docs/tech-stack.md): Technologies used in the frontend and backend.
 - [**API Documentation**](docs/api.md): WebSocket events and message formats.
+- [**Testing Guide**](docs/testing.md): Comprehensive testing documentation and commands.
 - [**Contributing**](docs/contributing.md): Guidelines for contributing to the project.
+
+## 🧪 Testing
+
+```bash
+./run-tests.sh                          # Run all tests
+cd server && npm test                   # Server tests
+cd client && npm run test:run            # Client tests
+```
+
+📖 **[TEST_COMMANDS.md](TEST_COMMANDS.md) - [docs/testing.md](docs/testing.md)**
+
 
 ## 🏗️ Project Structure
 

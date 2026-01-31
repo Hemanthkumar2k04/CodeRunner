@@ -98,7 +98,7 @@ else
     PIP_CMD="${VENV_DIR}/Scripts/pip" # Windows support just in case
 fi
 
-$PIP_CMD install -q requests socketio-client-v2 matplotlib >/dev/null
+$PIP_CMD install -q requests "python-socketio[asyncio_client]" aiohttp matplotlib >/dev/null
 
 # Run Test
 log_info "Starting load test..."
@@ -116,9 +116,9 @@ fi
 
 $PY_RUN "$LOAD_TEST_SCRIPT" \
     --students "$NUM_STUDENTS" \
-    --url "$SERVER_URL" \
+    --server "$SERVER_URL" \
     --mode "$MODE" \
-    --interval "$RAMP_INTERVAL" \
-    --batch "$RAMP_BATCH_SIZE"
+    --ramp-interval "$RAMP_INTERVAL" \
+    --ramp-batch-size "$RAMP_BATCH_SIZE"
 
 log_success "Load test finished. Check reports directory for results."

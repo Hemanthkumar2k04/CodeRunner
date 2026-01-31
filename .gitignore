@@ -27,12 +27,14 @@ server/*.log
 /tmp/
 
 # Test artifacts
-server/tests/.venv/
-server/tests/reports/
+/server/tests/.venv/
+/server/tests/reports/
 __pycache__/
 *.pyc
 *.pyo
 .pytest_cache/
+
+reports/
 
 # Coverage
 coverage/
