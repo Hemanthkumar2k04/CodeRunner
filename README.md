@@ -124,7 +124,6 @@ cd client && npm run test:run            # Client tests
 
 📖 **[TEST_COMMANDS.md](TEST_COMMANDS.md) - [docs/testing.md](docs/testing.md)**
 
-
 ## 🏗️ Project Structure
 
 ```
