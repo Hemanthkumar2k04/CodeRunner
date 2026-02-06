@@ -1,11 +1,14 @@
-import { useCallback } from 'react';
+// client/src/components/CodeEditor.tsx
+import { useCallback, useRef, useEffect } from 'react';
 import Editor, { type Monaco } from '@monaco-editor/react';
+import type { editor } from 'monaco-editor';
 import { useTheme } from './theme-provider';
 import { useEditorStore } from '@/stores/useEditorStore';
 import type { EditorState } from '@/stores/useEditorStore';
 import { getMonacoLanguage, getLanguageFromExtension, formatBytes, getFileSize } from '@/lib/file-utils';
 import { isNotebookFile } from '@/lib/notebook-utils';
 import { NotebookEditor } from './NotebookEditor';
+import { disableMonacoClipboard } from '@/lib/clipboard-blocker';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -34,6 +37,9 @@ export function CodeEditor({ onRunClick, onStopClick }: CodeEditorProps) {
   const closeTab = useEditorStore((state: EditorState) => state.closeTab);
   const updateContent = useEditorStore((state: EditorState) => state.updateContent);
   const markAsSaved = useEditorStore((state: EditorState) => state.markAsSaved);
+
+  // Reference to Monaco editor instance
+  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
 
   const activeFile = activeFileId ? files[activeFileId] : null;
   const activeConsole = activeFileId ? consoles[activeFileId] : null;
@@ -103,6 +109,19 @@ export function CodeEditor({ onRunClick, onStopClick }: CodeEditorProps) {
       // fallback: remove listeners when window unloads
       window.addEventListener('unload', dispose);
     }
+  const handleEditorDidMount = useCallback((editor: editor.IStandaloneCodeEditor) => {
+    // Store editor reference
+    editorRef.current = editor;
+    
+    // Apply clipboard blocking to Monaco editor
+    disableMonacoClipboard(editor);
+  }, []);
+
+  // Cleanup editor reference on unmount
+  useEffect(() => {
+    return () => {
+      editorRef.current = null;
+    };
   }, []);
 
   const handleTabClick = useCallback((tabId: string) => {
@@ -142,6 +161,7 @@ export function CodeEditor({ onRunClick, onStopClick }: CodeEditorProps) {
   }, [onRunClick, onStopClick, isRunning]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+      // Only allow Ctrl+S for save and Ctrl+Enter for run
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
         handleSave();
@@ -314,6 +334,27 @@ export function CodeEditor({ onRunClick, onStopClick }: CodeEditorProps) {
               }}
             />
           )}
+        <div className="flex-1 min-h-0">
+          <Editor
+            height="100%"
+            language={language}
+            value={activeFile?.content ?? ''}
+            onChange={handleEditorChange}
+            theme={theme === 'dark' ? 'vs-dark' : 'light'}
+            beforeMount={handleEditorWillMount}
+            onMount={handleEditorDidMount}
+            options={{
+              minimap: { enabled: false },
+              fontSize: 14,
+              padding: { top: 16 },
+              wordWrap: 'on',
+              automaticLayout: true,
+              scrollBeyondLastLine: false,
+              tabSize: 2,
+              // Disable Monaco's context menu
+              contextmenu: false,
+            }}
+          />
         </div>
       </div>
     </TooltipProvider>

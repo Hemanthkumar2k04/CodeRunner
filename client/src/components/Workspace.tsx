@@ -1,3 +1,4 @@
+//client/src/components/Workspace.tsx
 import { useState, useCallback } from 'react';
 import {
   Folder,
