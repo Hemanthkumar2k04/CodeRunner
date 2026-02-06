@@ -7,8 +7,8 @@ import { MobileWorkspace } from './components/MobileWorkspace';
 import { Workspace } from './components/Workspace';
 import { CodeEditor } from './components/CodeEditor';
 import { Console } from './components/Console';
-import NetworkMonitor from './components/NetworkMonitor';
 import { useSocket } from './hooks/useSocket';
+import { useCopyPasteRestriction } from './hooks/useCopyPasteRestriction';
 import { useEditorStore } from './stores/useEditorStore';
 import type { EditorState } from './stores/useEditorStore';
 import { getLanguageFromExtension, flattenTree, isLanguageSupported, isDataFile } from './lib/file-utils';
@@ -19,6 +19,9 @@ function AppContent() {
   const files = useEditorStore((state: EditorState) => state.files);
   const rootIds = useEditorStore((state: EditorState) => state.rootIds);
   const activeFileId = useEditorStore((state: EditorState) => state.activeFileId);
+
+  // Apply global copy-paste restriction
+  useCopyPasteRestriction();
 
   // Responsive state
   const [isMobile, setIsMobile] = useState(false);
@@ -262,11 +265,6 @@ function App() {
         <Route path="/" element={
           <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
             <AppContent />
-          </ThemeProvider>
-        } />
-        <Route path="/monitor" element={
-          <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-            <NetworkMonitor />
           </ThemeProvider>
         } />
         <Route path="*" element={<Navigate to="/" replace />} />
