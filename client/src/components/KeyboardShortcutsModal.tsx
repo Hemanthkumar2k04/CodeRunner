@@ -16,11 +16,11 @@ export function KeyboardShortcutsModal({ open, onOpenChange }: Props) {
     /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 
   const shortcuts = [
-    {
-      id: "save",
-      action: "Save file",
-      keys: isMac ? "Cmd + S" : "Ctrl + S",
-    },
+    // {
+    //   id: "save",
+    //   action: "Save file",
+    //   keys: isMac ? "Cmd + S" : "Ctrl + S",
+    // },
     {
       id: "run",
       action: "Run code",
