@@ -136,14 +136,10 @@ export function CodeEditor({ onRunClick, onStopClick }: CodeEditorProps) {
       // Stop execution if already running
       onStopClick();
     } else {
-      // Save the file first if it's modified
-      if (activeFile?.isModified) {
-        handleSave();
-      }
       // Then run the code
       onRunClick();
     }
-  }, [activeFile?.isModified, handleSave, onRunClick, onStopClick, isRunning]);
+  }, [onRunClick, onStopClick, isRunning]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -215,9 +211,7 @@ export function CodeEditor({ onRunClick, onStopClick }: CodeEditorProps) {
                     )}>
                       {file.name}
                     </span>
-                    {file.isModified && (
-                      <span className="text-orange-400 text-base leading-none">●</span>
-                    )}
+                    {/* Dirty state intentionally disabled; no indicator shown */}
                     <button
                       className={cn(
                         'ml-auto p-1 rounded-md hover:bg-muted-foreground/20 transition-opacity',

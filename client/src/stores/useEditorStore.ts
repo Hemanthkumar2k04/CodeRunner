@@ -250,10 +250,13 @@ export const useEditorStore = create<EditorState>()(
           return { success: false, error: `Total workspace size exceeds limit of ${MAX_TOTAL_SIZE / (1024 * 1024)}MB` };
         }
 
+        // Persist content but do NOT mark files as modified.
+        // The app treats all open files as "saved" in-session, so we
+        // intentionally keep `isModified` false to disable the dirty state.
         set(state => ({
           files: {
             ...state.files,
-            [id]: { ...state.files[id], content, isModified: true },
+            [id]: { ...state.files[id], content, isModified: false },
           },
         }));
 

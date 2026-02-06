@@ -129,9 +129,7 @@ function FileTreeNode({ nodeId, depth, onContextAction, selectedNodeId, onSelect
               </>
             )}
             <span className="truncate flex-1 font-medium">{node.name}</span>
-            {node.isModified && !node.isFolder && (
-              <span className="text-xs text-orange-400 font-bold">●</span>
-            )}
+            {/* Dirty state intentionally disabled; no indicator shown */}
             {!node.isFolder && (
               <ContextMenu>
                 <ContextMenuTrigger asChild>

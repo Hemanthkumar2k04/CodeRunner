@@ -152,9 +152,7 @@ function FileTreeNode({
           </>
         )}
         <span className="truncate flex-1 font-medium">{node.name}</span>
-        {node.isModified && !node.isFolder && (
-          <span className="text-xs text-orange-400 font-bold">●</span>
-        )}
+        {/* Dirty state intentionally disabled; no indicator shown */}
         <button
           className={cn(
             "p-1.5 rounded opacity-0 group-hover:opacity-100",
