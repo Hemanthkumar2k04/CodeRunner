@@ -220,8 +220,52 @@ export function NotebookCell({
                 fontSize: 13,
                 fontFamily: "'Fira Code', 'Consolas', monospace",
               }}
-              onMount={(editor) => {
+              onMount={(editor: any) => {
                 editorRef.current = editor;
+
+                const dom = editor.getDomNode?.();
+                if (!dom) return;
+
+                const onPaste = (e: ClipboardEvent) => {
+                  e.preventDefault();
+                  try { editor.focus(); } catch {}
+                };
+
+                const onKeyDown = (e: KeyboardEvent) => {
+                  if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
+                    e.preventDefault();
+                  }
+                  if (e.shiftKey && e.key === 'Insert') {
+                    e.preventDefault();
+                  }
+                };
+
+                const onDrop = (e: DragEvent) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                };
+
+                const onDragOver = (e: DragEvent) => e.preventDefault();
+
+                dom.addEventListener('paste', onPaste);
+                dom.addEventListener('keydown', onKeyDown);
+                dom.addEventListener('drop', onDrop);
+                dom.addEventListener('dragover', onDragOver);
+
+                const dispose = () => {
+                  try {
+                    dom.removeEventListener('paste', onPaste);
+                    dom.removeEventListener('keydown', onKeyDown);
+                    dom.removeEventListener('drop', onDrop);
+                    dom.removeEventListener('dragover', onDragOver);
+                  } catch {}
+                };
+
+                try {
+                  editor.onDidDispose(dispose);
+                } catch {
+                  window.addEventListener('unload', dispose);
+                }
               }}
             />
           </div>
@@ -250,6 +294,47 @@ export function NotebookCell({
                   },
                   padding: { top: 8, bottom: 8 },
                   fontSize: 14,
+                }}
+                onMount={(editor: any) => {
+                  const dom = editor.getDomNode?.();
+                  if (!dom) return;
+
+                  const onPaste = (e: ClipboardEvent) => {
+                    e.preventDefault();
+                    try { editor.focus(); } catch {}
+                  };
+
+                  const onKeyDown = (e: KeyboardEvent) => {
+                    if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
+                      e.preventDefault();
+                    }
+                    if (e.shiftKey && e.key === 'Insert') {
+                      e.preventDefault();
+                    }
+                  };
+
+                  const onDrop = (e: DragEvent) => { e.preventDefault(); e.stopPropagation(); };
+                  const onDragOver = (e: DragEvent) => e.preventDefault();
+
+                  dom.addEventListener('paste', onPaste);
+                  dom.addEventListener('keydown', onKeyDown);
+                  dom.addEventListener('drop', onDrop);
+                  dom.addEventListener('dragover', onDragOver);
+
+                  const dispose = () => {
+                    try {
+                      dom.removeEventListener('paste', onPaste);
+                      dom.removeEventListener('keydown', onKeyDown);
+                      dom.removeEventListener('drop', onDrop);
+                      dom.removeEventListener('dragover', onDragOver);
+                    } catch {}
+                  };
+
+                  try {
+                    editor.onDidDispose(dispose);
+                  } catch {
+                    window.addEventListener('unload', dispose);
+                  }
                 }}
               />
             </div>
