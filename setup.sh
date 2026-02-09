@@ -36,6 +36,16 @@ log_error() { printf "${RED}[ERROR]${NC} %s\n" "$1"; }
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Load environment variables from .env file if it exists
+if [ -f "${SCRIPT_DIR}/server/.env" ]; then
+    log_info "Loading environment variables from server/.env"
+    set -a  # Export all variables
+    source "${SCRIPT_DIR}/server/.env"
+    set +a  # Stop exporting
+else
+    log_warn "server/.env file not found, using defaults"
+fi
+
 # Ensure helper scripts are executable
 chmod +x "${SCRIPT_DIR}/cleanup.sh" 2>/dev/null || true
 chmod +x "${SCRIPT_DIR}/server/tests/run_load_test.sh" 2>/dev/null || true
@@ -202,9 +212,14 @@ if [ "$CONFIGURE_NET" = true ]; then
     if [ "$EUID" -ne 0 ]; then 
         log_warn "Root privileges needed to apply sysctl kernel settings."
         echo "Applying network configuration now (requires your password)..."
-        if ! sudo -p "Enter sudo password to apply network configuration: " "$0" --configure-net; then
-            log_error "Failed to apply network configuration"
-            exit 1
+        if [ "$(uname)" == "Linux" ]; then
+            if ! sudo -p "Enter sudo password to apply network configuration: " sysctl -w net.ipv4.ip_local_port_range="1024 65535" net.netfilter.nf_conntrack_max=1048576; then
+                log_error "Failed to apply network configuration"
+                exit 1
+            fi
+            log_success "Network limits updated"
+        else
+            log_warn "Network configuration only supported on Linux"
         fi
     else
         echo "Applying sysctl settings for high concurrency..."

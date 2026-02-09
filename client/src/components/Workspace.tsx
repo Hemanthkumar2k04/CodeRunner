@@ -1,5 +1,6 @@
 //client/src/components/Workspace.tsx
 import { useState, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Folder,
   FilePlus,
@@ -10,6 +11,7 @@ import {
   Pencil,
   MoreVertical,
   FileCode,
+  Home,
 } from 'lucide-react';
 import { useEditorStore } from '@/stores/useEditorStore';
 import type { EditorState } from '@/stores/useEditorStore';
@@ -96,103 +98,83 @@ function FileTreeNode({ nodeId, depth, onContextAction, selectedNodeId, onSelect
 
   return (
     <div>
-      <ContextMenu>
-        <ContextMenuTrigger>
-          <div
-            className={cn(
-              'group flex items-center gap-2 text-sm cursor-pointer py-1.5 px-2 rounded-md transition-all',
-              'hover:bg-sidebar-accent/70',
-              selectedNodeId === node.id
-                ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm'
-                : !selectedNodeId && isActive && !node.isFolder && 'bg-sidebar-accent/50 text-sidebar-accent-foreground'
-            )}
-            style={{ paddingLeft: `${depth * 16 + 8}px` }}
-            onClick={handleClick}
-          >
-            {node.isFolder ? (
-              <>
-                {isExpanded ? (
-                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform" />
-                ) : (
-                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform" />
-                )}
-                <FileIcon 
-                  filename={node.name} 
-                  isFolder 
-                  isOpen={isExpanded} 
-                  className="shrink-0" 
-                />
-              </>
+      <div
+        className={cn(
+          'group flex items-center gap-2 text-sm cursor-pointer py-1.5 px-2 rounded-md transition-all',
+          'hover:bg-sidebar-accent/70',
+          selectedNodeId === node.id
+            ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm'
+            : !selectedNodeId && isActive && !node.isFolder && 'bg-sidebar-accent/50 text-sidebar-accent-foreground'
+        )}
+        style={{ paddingLeft: `${depth * 16 + 8}px` }}
+        onClick={handleClick}
+      >
+        {node.isFolder ? (
+          <>
+            {isExpanded ? (
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform" />
             ) : (
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform" />
+            )}
+            <FileIcon 
+              filename={node.name} 
+              isFolder 
+              isOpen={isExpanded} 
+              className="shrink-0" 
+            />
+          </>
+        ) : (
+          <>
+            <span className="w-4 shrink-0" />
+            <FileIcon filename={node.name} className="shrink-0" />
+          </>
+        )}
+        <span className="truncate flex-1 font-medium">{node.name}</span>
+        {/* Three-dot menu - small popup on hover */}
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
+            <button
+              className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-sidebar-accent/80 transition-opacity ml-1"
+              onClick={(e) => e.stopPropagation()}
+              title={node.isFolder ? 'Folder options' : 'File options'}
+            >
+              <MoreVertical className="h-4 w-4" />
+            </button>
+          </ContextMenuTrigger>
+          <ContextMenuContent>
+            {node.isFolder && (
               <>
-                <span className="w-4 shrink-0" />
-                <FileIcon filename={node.name} className="shrink-0" />
+                <ContextMenuItem
+                  onClick={() => onContextAction('newFile', node.id, true)}
+                >
+                  <FilePlus className="h-4 w-4 mr-2" />
+                  New File
+                </ContextMenuItem>
+                <ContextMenuItem
+                  onClick={() => onContextAction('newFolder', node.id, true)}
+                >
+                  <FolderPlus className="h-4 w-4 mr-2" />
+                  New Folder
+                </ContextMenuItem>
+                <ContextMenuSeparator />
               </>
             )}
-            <span className="truncate flex-1 font-medium">{node.name}</span>
-            {/* Dirty state intentionally disabled; no indicator shown */}
-            {!node.isFolder && (
-              <ContextMenu>
-                <ContextMenuTrigger asChild>
-                  <button
-                    className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-sidebar-accent transition-opacity"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <MoreVertical className="h-3.5 w-3.5" />
-                  </button>
-                </ContextMenuTrigger>
-                <ContextMenuContent>
-                  <ContextMenuItem
-                    onClick={() => onContextAction('rename', node.id, false)}
-                  >
-                    <Pencil className="h-4 w-4 mr-2" />
-                    Rename
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    className="text-destructive"
-                    onClick={() => onContextAction('delete', node.id, false)}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete
-                  </ContextMenuItem>
-                </ContextMenuContent>
-              </ContextMenu>
-            )}
-          </div>
-        </ContextMenuTrigger>
-        <ContextMenuContent>
-          {node.isFolder && (
-            <>
-              <ContextMenuItem
-                onClick={() => onContextAction('newFile', node.id, true)}
-              >
-                <FilePlus className="h-4 w-4 mr-2" />
-                New File
-              </ContextMenuItem>
-              <ContextMenuItem
-                onClick={() => onContextAction('newFolder', node.id, true)}
-              >
-                <FolderPlus className="h-4 w-4 mr-2" />
-                New Folder
-              </ContextMenuItem>
-              <ContextMenuSeparator />
-            </>
-          )}
-          <ContextMenuItem
-            onClick={() => onContextAction('rename', node.id, node.isFolder)}
-          >
-            <Pencil className="h-4 w-4 mr-2" />
-            Rename
-          </ContextMenuItem>
-          <ContextMenuItem
-            onClick={() => onContextAction('delete', node.id, node.isFolder)}
-            className="text-destructive focus:text-destructive"
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Delete
-          </ContextMenuItem>
-        </ContextMenuContent>
-      </ContextMenu>
+            <ContextMenuItem
+              onClick={() => onContextAction('rename', node.id, node.isFolder)}
+            >
+              <Pencil className="h-4 w-4 mr-2" />
+              Rename
+            </ContextMenuItem>
+            <ContextMenuItem
+              className="text-destructive focus:text-destructive focus:bg-destructive/10"
+              onClick={() => onContextAction('delete', node.id, node.isFolder)}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
+      </div>
 
       {/* Render children if folder is expanded */}
       {node.isFolder && isExpanded && sortedChildren.length > 0 && (
@@ -214,6 +196,7 @@ function FileTreeNode({ nodeId, depth, onContextAction, selectedNodeId, onSelect
 }
 
 export function Workspace() {
+  const location = useLocation();
   const files = useEditorStore((state: EditorState) => state.files);
   const rootIds = useEditorStore((state: EditorState) => state.rootIds);
   const addFile = useEditorStore((state: EditorState) => state.addFile);
@@ -369,6 +352,22 @@ export function Workspace() {
             <span className="text-sm font-semibold text-sidebar-foreground">Explorer</span>
           </div>
           <div className="flex items-center gap-1">
+            {location.pathname !== "/" && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 hover:bg-sidebar-accent"
+                    onClick={() => window.location.href = "/"}
+                    title="Go to home"
+                  >
+                    <Home className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Go to home</TooltipContent>
+              </Tooltip>
+            )}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

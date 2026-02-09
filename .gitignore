@@ -36,6 +36,39 @@ __pycache__/
 
 reports/
 
+# Compiled files
+*.class
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+*.jar
+!load-tester*.jar
+
+# Java build artifacts
+target/
+*.war
+*.ear
+*.nar
+hs_err_pid*
+
+# C/C++ build artifacts
+*.out
+*.app
+a.out
+
+# IDE generated files
+*.iml
+.project
+.classpath
+.settings/
+
+# Temp documentation
+IMPLEMENTATION.md
+CLEANUP_IMPROVEMENTS.md
+
 # Coverage
 coverage/
 .nyc_output/

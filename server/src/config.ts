@@ -16,8 +16,8 @@ export const config = {
   // === Docker Configuration ===
   docker: {
     // Resource limits per container
-    memory: process.env.DOCKER_MEMORY || '128m',
-    memorySQL: process.env.DOCKER_MEMORY_SQL || '256m', // SQL containers need more memory
+    memory: process.env.DOCKER_MEMORY || '512m',
+    memorySQL: process.env.DOCKER_MEMORY_SQL || '512m', // SQL containers need more memory
     cpus: process.env.DOCKER_CPUS || '0.5',
     cpusNotebook: process.env.DOCKER_CPUS_NOTEBOOK || '1', // Notebook kernels get more CPU
     
@@ -53,7 +53,7 @@ export const config = {
   // === Session Container Management ===
   sessionContainers: {
     // TTL and cleanup
-    ttl: parseInt(process.env.SESSION_TTL || '60000', 10), // 1 minute
+    ttl: parseInt(process.env.SESSION_TTL || '30000', 10), // 30 seconds
     cleanupInterval: parseInt(process.env.CLEANUP_INTERVAL || '30000', 10), // 30 seconds
     orphanedNetworkAge: parseInt(process.env.ORPHANED_NETWORK_AGE || '300000', 10), // 5 minutes
     

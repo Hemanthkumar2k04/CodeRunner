@@ -6,7 +6,8 @@ RUN pip install --no-cache-dir \
     pandas \
     matplotlib \
     ipykernel \
-    pillow
+    pillow \
+    scikit-learn
 
 # Create non-root user
 RUN useradd -m runner

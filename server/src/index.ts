@@ -1,3 +1,6 @@
+// Load environment variables FIRST before any other imports
+require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
+
 import express from 'express';
 import cors from 'cors';
 import { exec, spawn, execSync } from 'child_process';
@@ -10,6 +13,20 @@ import { sessionPool } from './pool';
 import { config, validateConfig } from './config';
 import { getOrCreateSessionNetwork, deleteSessionNetwork, getNetworkName, cleanupOrphanedNetworks, getNetworkStats, getSubnetStats, getNetworkMetrics } from './networkManager';
 import { kernelManager } from './kernelManager';
+import { getCleanupWorker, shutdownCleanupWorker } from './cleanupWorker';
+
+// Re-read environment variables into config after dotenv load
+(config.docker as any).memory = process.env.DOCKER_MEMORY || '512m';
+(config.docker as any).memorySQL = process.env.DOCKER_MEMORY_SQL || '512m';
+(config.docker as any).cpus = process.env.DOCKER_CPUS || '0.5';
+(config.docker as any).cpusNotebook = process.env.DOCKER_CPUS_NOTEBOOK || '1';
+(config.docker as any).timeout = process.env.DOCKER_TIMEOUT || '30s';
+
+console.log('[Server] Loaded Docker config:', {
+  memory: config.docker.memory,
+  memorySQL: config.docker.memorySQL,
+  cpus: config.docker.cpus,
+});
 
 // Validate configuration at startup
 validateConfig();
@@ -87,45 +104,137 @@ function getRunCommand(language: string, entryFile: string): string {
 // --- Request Queue Manager ---
 // Manages concurrent execution of 'run' requests with configurable parallelism
 // Files within a single request execute sequentially to support dependencies (e.g., server→client)
+
+interface QueuedTask {
+  task: () => Promise<void>;
+  priority: number;
+  timestamp: number;
+  language?: string;
+}
+
 class ExecutionQueue {
-  private queue: Array<() => Promise<void>> = [];
+  private queue: Array<QueuedTask> = [];
   private activeCount: number = 0;
   private maxConcurrent: number;
+  private completedTasks: number = 0;
+  private failedTasks: number = 0;
+  private taskTimes: number[] = [];
+  private maxTaskTimeHistory: number = 100;
+  private maxQueueSize: number;
+  private queueTimeout: number;
 
-  constructor(maxConcurrent: number) {
+  constructor(maxConcurrent: number, maxQueueSize?: number, queueTimeout?: number) {
     this.maxConcurrent = maxConcurrent;
+    this.maxQueueSize = maxQueueSize || parseInt(process.env.MAX_QUEUE_SIZE || '200', 10);
+    this.queueTimeout = queueTimeout || parseInt(process.env.QUEUE_TIMEOUT || '60000', 10);
   }
 
-  enqueue(task: () => Promise<void>): void {
-    this.queue.push(task);
+  enqueue(task: () => Promise<void>, priority: number = 0, language?: string): void {
+    // Check queue size limit
+    if (this.queue.length >= this.maxQueueSize) {
+      throw new Error(`Queue full: ${this.queue.length} tasks queued (max: ${this.maxQueueSize})`);
+    }
+
+    const queuedTask: QueuedTask = {
+      task,
+      priority,
+      timestamp: Date.now(),
+      language,
+    };
+
+    this.queue.push(queuedTask);
+    
+    // Sort queue by priority (higher first), then by timestamp (FIFO)
+    this.queue.sort((a, b) => {
+      if (a.priority !== b.priority) {
+        return b.priority - a.priority;
+      }
+      return a.timestamp - b.timestamp;
+    });
+
     this.processQueue();
   }
 
-  private async processQueue(): Promise<void> {
+  private processQueue(): void {
+    // Remove expired tasks from queue
+    const now = Date.now();
+    const initialQueueLength = this.queue.length;
+    this.queue = this.queue.filter(qt => {
+      if (now - qt.timestamp > this.queueTimeout) {
+        console.warn(`[ExecutionQueue] Task timed out after ${this.queueTimeout}ms in queue`);
+        this.failedTasks++;
+        return false;
+      }
+      return true;
+    });
+    if (this.queue.length < initialQueueLength) {
+      console.log(`[ExecutionQueue] Removed ${initialQueueLength - this.queue.length} expired tasks from queue`);
+    }
+
+    // Process tasks without blocking - key fix for concurrency
     while (this.queue.length > 0 && this.activeCount < this.maxConcurrent) {
-      const task = this.queue.shift();
-      if (!task) break;
+      const queuedTask = this.queue.shift();
+      if (!queuedTask) break;
 
       this.activeCount++;
-      try {
-        await task();
-      } catch (error) {
-        console.error('[ExecutionQueue] Task error:', error);
-      } finally {
-        this.activeCount--;
-        // Continue processing remaining tasks
-        if (this.queue.length > 0) {
-          this.processQueue();
-        }
-      }
+      const startTime = Date.now();
+
+      // Execute task asynchronously WITHOUT await - this enables true parallelism
+      queuedTask.task()
+        .then(() => {
+          const taskTime = Date.now() - startTime;
+          this.taskTimes.push(taskTime);
+          if (this.taskTimes.length > this.maxTaskTimeHistory) {
+            this.taskTimes.shift();
+          }
+          this.completedTasks++;
+        })
+        .catch((error) => {
+          console.error('[ExecutionQueue] Task error:', error);
+          this.failedTasks++;
+        })
+        .finally(() => {
+          this.activeCount--;
+          // Continue processing remaining tasks
+          if (this.queue.length > 0) {
+            this.processQueue();
+          }
+        });
     }
   }
 
   getStats() {
+    const averageTaskTime = this.taskTimes.length > 0
+      ? this.taskTimes.reduce((a, b) => a + b, 0) / this.taskTimes.length
+      : 0;
+
     return {
       queued: this.queue.length,
       active: this.activeCount,
       maxConcurrent: this.maxConcurrent,
+      completedTasks: this.completedTasks,
+      failedTasks: this.failedTasks,
+      averageTaskTime: Math.round(averageTaskTime),
+      maxQueueSize: this.maxQueueSize,
+    };
+  }
+
+  getDetailedStats() {
+    const stats = this.getStats();
+    const queuedByLanguage: { [key: string]: number } = {};
+    
+    this.queue.forEach(qt => {
+      if (qt.language) {
+        queuedByLanguage[qt.language] = (queuedByLanguage[qt.language] || 0) + 1;
+      }
+    });
+
+    return {
+      ...stats,
+      queuedByLanguage,
+      queueUtilization: this.maxConcurrent > 0 
+        ? Math.round((this.activeCount / this.maxConcurrent) * 100) 
+        : 0,
     };
   }
 }
@@ -199,6 +308,7 @@ io.on('connection', (socket) => {
     const { sessionId, language, files } = data;
     
     // Enqueue the execution task with configurable concurrency
+    // Priority: WebSocket interactive requests get priority 2 (higher than API)
     executionQueue.enqueue(async () => {
       currentLanguage = language;
       currentSessionId = sessionId;
@@ -387,7 +497,7 @@ io.on('connection', (socket) => {
           });
         });
       });
-    });
+    }, 2, language); // Priority 2 for interactive WebSocket requests
   });
 
   socket.on('input', (data: string) => {
@@ -596,6 +706,34 @@ app.get('/api/cleanup-stats', async (req, res) => {
   }
 });
 
+// Queue monitoring endpoint
+app.get('/api/queue-stats', (req, res) => {
+  try {
+    const stats = executionQueue.getDetailedStats();
+    const warnings: string[] = [];
+    
+    // Add warnings based on queue state
+    if (stats.queued > stats.maxConcurrent * 2) {
+      warnings.push(`Queue backlog: ${stats.queued} requests queued (${Math.round(stats.queued / stats.maxConcurrent)}x capacity)`);
+    }
+    if (stats.queueUtilization > 90) {
+      warnings.push(`High concurrency: ${stats.queueUtilization}% of capacity in use`);
+    }
+    if (stats.failedTasks > stats.completedTasks * 0.1) {
+      warnings.push(`High failure rate: ${stats.failedTasks} failed out of ${stats.completedTasks + stats.failedTasks} total`);
+    }
+    
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      queue: stats,
+      warnings,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // API endpoint for code execution - networking always enabled
 app.post('/api/run', async (req, res) => {
   const { language, files } = req.body;
@@ -614,7 +752,28 @@ app.post('/api/run', async (req, res) => {
   const sessionId = `api-${Date.now()}-${Math.random().toString(36).substring(7)}`;
   
   try {
-    const result = await executeWithSessionContainer(language, files, sessionId);
+    // Check queue capacity before accepting request
+    const queueStats = executionQueue.getStats();
+    if (queueStats.queued >= queueStats.maxQueueSize) {
+      res.status(503).json({ 
+        error: `Server overloaded: ${queueStats.queued} requests queued (max: ${queueStats.maxQueueSize})`,
+        queueStats,
+      });
+      return;
+    }
+
+    // Execute via queue with priority 1 (lower than WebSocket requests)
+    const result = await new Promise<RunResult>((resolve, reject) => {
+      executionQueue.enqueue(async () => {
+        try {
+          const execResult = await executeWithSessionContainer(language, files, sessionId);
+          resolve(execResult);
+        } catch (error) {
+          reject(error);
+        }
+      }, 1, language);
+    });
+
     const executionTime = Date.now() - startTime;
     
     res.json({
@@ -849,60 +1008,75 @@ if (require.main === module) {
       process.exit(1);
     });
 
+    // Initialize cleanup worker for non-blocking cleanup
+    const cleanupWorker = getCleanupWorker();
+    
     // Adaptive cleanup intervals based on load
     let containerCleanupInterval = config.sessionContainers.cleanupInterval; // Default 30s
     let networkCleanupInterval = 120000; // Default 2 minutes
     
-    // Start TTL cleanup monitor with adaptive intervals
-    const ttlCleanupTimer = setInterval(async () => {
-      const startTime = Date.now();
-      await sessionPool.cleanupExpiredContainers();
-      const duration = Date.now() - startTime;
-      
-      // Adapt cleanup interval based on metrics
-      const metrics = sessionPool.getMetrics();
-      const sessionCount = sessionPool.getSessionCount();
-      
-      // If we're under load (many sessions or errors), clean up more frequently
-      if (sessionCount > 50 || metrics.cleanupErrors > 5) {
-        containerCleanupInterval = Math.max(15000, containerCleanupInterval * 0.8); // Speed up, min 15s
-        console.log(`[Cleanup] High load detected (${sessionCount} sessions), reducing container cleanup interval to ${containerCleanupInterval / 1000}s`);
-      } else if (sessionCount < 10 && metrics.cleanupErrors === 0) {
-        containerCleanupInterval = Math.min(60000, containerCleanupInterval * 1.1); // Slow down, max 60s
-      }
-    }, containerCleanupInterval);
+    // Container cleanup - runs asynchronously without blocking
+    const performContainerCleanup = async () => {
+      // Run cleanup in background without blocking
+      setImmediate(async () => {
+        try {
+          await sessionPool.cleanupExpiredContainers();
+          
+          // Adapt cleanup interval based on metrics
+          const metrics = sessionPool.getMetrics();
+          const sessionCount = sessionPool.getSessionCount();
+          
+          // If we're under load (many sessions or errors), clean up more frequently
+          if (sessionCount > 50 || metrics.cleanupErrors > 5) {
+            containerCleanupInterval = Math.max(15000, containerCleanupInterval * 0.8); // Speed up, min 15s
+            console.log(`[Cleanup] High load detected (${sessionCount} sessions), reducing container cleanup interval to ${containerCleanupInterval / 1000}s`);
+          } else if (sessionCount < 10 && metrics.cleanupErrors === 0) {
+            containerCleanupInterval = Math.min(60000, containerCleanupInterval * 1.1); // Slow down, max 60s
+          }
+        } catch (error) {
+          console.error('[Cleanup] Container cleanup error:', error);
+        }
+      });
+    };
 
-    // Cleanup orphaned networks with adaptive intervals
-    // Use shorter age threshold (1 minute) to catch failed networks quickly during high load
-    const networkCleanupTimer = setInterval(async () => {
-      const startTime = Date.now();
-      const networkMetrics = getNetworkMetrics();
-      const stats = await getNetworkStats().catch(() => ({ empty: 0, total: 0 }));
-      
-      // Calculate adaptive max age based on orphaned network count
-      let maxAge = 60000; // Default 1 minute
-      if (stats.empty > 50) {
-        maxAge = 0; // Emergency: Clean all orphaned networks immediately
-        console.warn(`[Cleanup] Emergency network cleanup triggered (${stats.empty} orphaned networks)`);
-      } else if (stats.empty > 20) {
-        maxAge = 30000; // Aggressive: 30 seconds
-        console.warn(`[Cleanup] Aggressive network cleanup (${stats.empty} orphaned networks)`);
-      }
-      
-      await cleanupOrphanedNetworks(maxAge).catch(err => 
-        console.error('[Cleanup Job] Orphaned networks cleanup failed:', err)
-      );
-      
-      const duration = Date.now() - startTime;
-      
-      // Adapt network cleanup interval based on metrics
-      if (stats.empty > 20 || networkMetrics.cleanupErrors > 5) {
-        networkCleanupInterval = Math.max(30000, networkCleanupInterval * 0.7); // Speed up, min 30s
-        console.log(`[Cleanup] High orphaned networks (${stats.empty}), reducing network cleanup interval to ${networkCleanupInterval / 1000}s`);
-      } else if (stats.empty < 5 && networkMetrics.cleanupErrors === 0) {
-        networkCleanupInterval = Math.min(300000, networkCleanupInterval * 1.2); // Slow down, max 5 minutes
-      }
-    }, networkCleanupInterval);
+    // Network cleanup - runs asynchronously without blocking
+    const performNetworkCleanup = async () => {
+      // Run cleanup in background without blocking
+      setImmediate(async () => {
+        try {
+          const networkMetrics = getNetworkMetrics();
+          const stats = await getNetworkStats().catch(() => ({ empty: 0, total: 0, withContainers: 0 }));
+          
+          // Calculate adaptive max age based on orphaned network count
+          let maxAge = 60000; // Default 1 minute
+          if (stats.empty > 50) {
+            maxAge = 0; // Emergency: Clean all orphaned networks immediately
+            console.warn(`[Cleanup] Emergency network cleanup triggered (${stats.empty} orphaned networks)`);
+          } else if (stats.empty > 20) {
+            maxAge = 30000; // Aggressive: 30 seconds
+            console.warn(`[Cleanup] Aggressive network cleanup (${stats.empty} orphaned networks)`);
+          }
+          
+          await cleanupOrphanedNetworks(maxAge).catch(err => 
+            console.error('[Cleanup Job] Orphaned networks cleanup failed:', err)
+          );
+          
+          // Adapt network cleanup interval based on metrics
+          if (stats.empty > 20 || networkMetrics.cleanupErrors > 5) {
+            networkCleanupInterval = Math.max(30000, networkCleanupInterval * 0.7); // Speed up, min 30s
+            console.log(`[Cleanup] High orphaned networks (${stats.empty}), reducing network cleanup interval to ${networkCleanupInterval / 1000}s`);
+          } else if (stats.empty < 5 && networkMetrics.cleanupErrors === 0) {
+            networkCleanupInterval = Math.min(300000, networkCleanupInterval * 1.2); // Slow down, max 5 minutes
+          }
+        } catch (error) {
+          console.error('[Cleanup] Network cleanup error:', error);
+        }
+      });
+    };
+
+    // Start periodic cleanup using setInterval (non-blocking with setImmediate)
+    const ttlCleanupTimer = setInterval(performContainerCleanup, containerCleanupInterval);
+    const networkCleanupTimer = setInterval(performNetworkCleanup, networkCleanupInterval);
 
     // Log network statistics every 5 minutes for monitoring
     const networkStatsInterval = setInterval(async () => {
@@ -925,6 +1099,10 @@ if (require.main === module) {
       clearInterval(ttlCleanupTimer);
       clearInterval(networkCleanupTimer);
       clearInterval(networkStatsInterval);
+      
+      // Shutdown cleanup worker
+      await shutdownCleanupWorker();
+      
       await sessionPool.cleanupAll();
       await cleanupOrphanedNetworks(0); // Clean up all networks on shutdown
       server.close(() => {

@@ -1,13 +1,18 @@
 // client/src/hooks/useCopyPasteRestriction.ts
 import { useEffect } from 'react';
 import { toast } from 'sonner';
+import { isTestingMode } from '@/lib/clipboard-blocker';
 
 /**
  * Custom hook to disable copy, paste, and cut operations globally
  * This prevents students from copying/pasting code during testing
+ * Can be disabled by enabling testing mode (add ?test=true to URL or set localStorage key)
  */
 export function useCopyPasteRestriction() {
   useEffect(() => {
+    // Skip restriction if in testing mode (allows paste for testing)
+    if (isTestingMode()) return;
+
     // Track if we've shown a recent notification to avoid spam
     let lastPasteWarningTime = 0;
     const WARNING_COOLDOWN = 1000; // 1 second cooldown between warnings
@@ -22,7 +27,7 @@ export function useCopyPasteRestriction() {
         const now = Date.now();
         if (now - lastPasteWarningTime > WARNING_COOLDOWN) {
           toast.error('Pasting is not allowed', {
-            description: 'This action is disabled to maintain code integrity.',
+            description: 'This action is disabled.',
             duration: 3000,
           });
           lastPasteWarningTime = now;
@@ -47,7 +52,17 @@ export function useCopyPasteRestriction() {
           const now = Date.now();
           if (now - lastPasteWarningTime > WARNING_COOLDOWN) {
             toast.error('Pasting is not allowed', {
-              description: 'This action is disabled to maintain code integrity.',
+              description: 'This action is disabled.',
+              duration: 3000,
+            });
+            lastPasteWarningTime = now;
+          }
+        }
+        if (e.key === 'c') {
+          const now = Date.now();
+          if (now - lastPasteWarningTime > WARNING_COOLDOWN) {
+            toast.error('Copying is not allowed', {
+              description: 'This action is disabled.',
               duration: 3000,
             });
             lastPasteWarningTime = now;
@@ -67,7 +82,7 @@ export function useCopyPasteRestriction() {
           const now = Date.now();
           if (now - lastPasteWarningTime > WARNING_COOLDOWN) {
             toast.error('Pasting is not allowed', {
-              description: 'This action is disabled to maintain code integrity.',
+              description: 'This action is disabled.',
               duration: 3000,
             });
             lastPasteWarningTime = now;

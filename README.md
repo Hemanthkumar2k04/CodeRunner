@@ -107,22 +107,56 @@ CodeRunner is a web-based code execution platform designed for educational lab e
 
 For detailed information about the project, please refer to the documentation in the `docs/` folder:
 
-- [**Getting Started**](docs/getting-started.md): Detailed installation and setup instructions.
-- [**Architecture & Design**](docs/architecture.md): Project structure, execution flow, and security features.
-- [**Tech Stack**](docs/tech-stack.md): Technologies used in the frontend and backend.
-- [**API Documentation**](docs/api.md): WebSocket events and message formats.
-- [**Testing Guide**](docs/testing.md): Comprehensive testing documentation and commands.
-- [**Contributing**](docs/contributing.md): Guidelines for contributing to the project.
+- [**Getting Started**](docs/getting-started.md): Detailed installation and setup instructions
+- [**Testing Guide**](docs/testing.md): Complete testing documentation and commands
+- [**Queue Architecture**](docs/queue-architecture.md): Execution queue system design and monitoring
+- [**Contributing**](docs/contributing.md): Guidelines for contributing to the project
 
 ## 🧪 Testing
 
+### Quick Start
+
 ```bash
-./run-tests.sh                          # Run all tests
-cd server && npm test                   # Server tests
-cd client && npm run test:run            # Client tests
+# Run all tests (server + client)
+./run-tests.sh
+
+# Server tests only
+cd server && npm test
+
+# Client tests only  
+cd client && npm run test:run
+
+# Load testing
+cd server/tests/load-test-java && ./run-load-test.sh
 ```
 
-📖 **[TEST_COMMANDS.md](TEST_COMMANDS.md) - [docs/testing.md](docs/testing.md)**
+### Load Testing
+
+Stress test the server's concurrent execution capacity:
+
+```bash
+cd server/tests/load-test-java
+
+# First time: build the load tester
+mvn clean package
+
+# Run with custom parameters
+java -jar target/load-tester-1.0.0-jar-with-dependencies.jar \
+  --users 60 \          # Total users to simulate
+  --ramp-time 30 \      # Ramp-up period (seconds)
+  --duration 60 \       # Test duration (seconds)
+  --concurrent 30       # Max concurrent users
+```
+
+**Performance Targets:**
+- Success rate: ≥95%
+- P95 response time: <10s
+- Concurrent users: 60+
+
+📖 **Full documentation:**
+- [Testing Guide](docs/testing.md) - All test commands and procedures
+- [Load Test README](server/tests/load-test-java/README.md) - Detailed load testing guide
+- [Queue Architecture](docs/queue-architecture.md) - System design and monitoring
 
 ## 🏗️ Project Structure
 

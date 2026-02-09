@@ -3,11 +3,22 @@ import * as monaco from 'monaco-editor';
 import type { editor } from 'monaco-editor';
 
 /**
+ * Check if testing mode is enabled (allows paste for testing purposes)
+ */
+export function isTestingMode(): boolean {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('test') === 'true' || localStorage.getItem('coderunner-test-mode') === 'true';
+}
+
+/**
  * Configure Monaco Editor to disable copy/paste/cut operations
  * @param editor Monaco editor instance
  */
 export function disableMonacoClipboard(editor: editor.IStandaloneCodeEditor | null) {
   if (!editor) return;
+
+  // Skip clipboard blocking if in testing mode
+  if (isTestingMode()) return;
 
   // Get the DOM node of the editor
   const editorDomNode = editor.getDomNode();
@@ -89,5 +100,5 @@ export function applyClipboardBlockingStyles() {
 export function showClipboardBlockedNotification() {
   // Optional: Add a subtle notification
   // For now, just log to console
-  console.log('Copy/Paste operations are disabled during testing');
+  console.log('Copy/Paste operations are disabled.');
 }
