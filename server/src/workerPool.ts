@@ -65,7 +65,13 @@ export class WorkerThreadPool {
 
   constructor(poolSize?: number, workerScriptPath?: string, enabled: boolean = true) {
     this.poolSize = poolSize || Math.max(2, Math.min(cpus().length, 8));
-    this.workerScriptPath = workerScriptPath || path.join(__dirname, 'worker.js');
+    
+    // Detect if running in development (ts-node) or production (compiled)
+    // In dev mode, use .ts files; in production, use .js files
+    const isDev = __filename.endsWith('.ts') || process.execArgv.some(arg => arg.includes('ts-node'));
+    const workerExt = isDev ? 'ts' : 'js';
+    this.workerScriptPath = workerScriptPath || path.join(__dirname, `worker.${workerExt}`);
+    
     this.enabled = enabled;
 
     if (this.enabled) {
@@ -89,7 +95,13 @@ export class WorkerThreadPool {
    */
   private createWorker(id: number): void {
     try {
-      const worker = new Worker(this.workerScriptPath);
+      // In dev mode with ts-node, pass execArgv to register ts-node in worker threads
+      const isDev = __filename.endsWith('.ts') || process.execArgv.some(arg => arg.includes('ts-node'));
+      const workerOptions = isDev ? {
+        execArgv: ['-r', 'ts-node/register']
+      } : {};
+      
+      const worker = new Worker(this.workerScriptPath, workerOptions);
       
       const workerInfo: WorkerInfo = {
         worker,
