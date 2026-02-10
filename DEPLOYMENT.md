@@ -51,6 +51,7 @@ nano .env
 ```
 
 **Key production settings:**
+
 - `NODE_ENV=production` (required)
 - `LOG_FORMAT=json` (structured logging for production)
 - `WORKER_THREADS=4` (or based on CPU cores)
@@ -97,6 +98,7 @@ curl http://localhost:3000/api/queue-stats | jq '.workerPool'
 ```
 
 Expected output:
+
 ```json
 {
   "totalWorkers": 4,
@@ -129,7 +131,8 @@ git push origin production
 
 **Issue:** Workers show errors about missing `.ts` or `.js` files
 
-**Solution:** 
+**Solution:**
+
 - In production: Ensure `npm run build` was run
 - Check `dist/worker.js` exists
 - Verify `NODE_ENV=production` in `.env`
@@ -139,6 +142,7 @@ git push origin production
 **Issue:** Development mode tries to load `worker.js`
 
 **Solution:**
+
 - Ensure running with `npm run dev` (uses ts-node)
 - Check `process.execArgv` includes `ts-node`
 - Verify `NODE_ENV=development` in `.env`
