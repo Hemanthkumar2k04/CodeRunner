@@ -35,6 +35,13 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -131,8 +138,8 @@ function FileTreeNode({ nodeId, depth, onContextAction, selectedNodeId, onSelect
         )}
         <span className="truncate flex-1 font-medium">{node.name}</span>
         {/* Three-dot menu - small popup on hover */}
-        <ContextMenu>
-          <ContextMenuTrigger asChild>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
             <button
               className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-sidebar-accent/80 transition-opacity ml-1"
               onClick={(e) => e.stopPropagation()}
@@ -140,40 +147,40 @@ function FileTreeNode({ nodeId, depth, onContextAction, selectedNodeId, onSelect
             >
               <MoreVertical className="h-4 w-4" />
             </button>
-          </ContextMenuTrigger>
-          <ContextMenuContent>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
             {node.isFolder && (
               <>
-                <ContextMenuItem
+                <DropdownMenuItem
                   onClick={() => onContextAction('newFile', node.id, true)}
                 >
                   <FilePlus className="h-4 w-4 mr-2" />
                   New File
-                </ContextMenuItem>
-                <ContextMenuItem
+                </DropdownMenuItem>
+                <DropdownMenuItem
                   onClick={() => onContextAction('newFolder', node.id, true)}
                 >
                   <FolderPlus className="h-4 w-4 mr-2" />
                   New Folder
-                </ContextMenuItem>
-                <ContextMenuSeparator />
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
               </>
             )}
-            <ContextMenuItem
+            <DropdownMenuItem
               onClick={() => onContextAction('rename', node.id, node.isFolder)}
             >
               <Pencil className="h-4 w-4 mr-2" />
               Rename
-            </ContextMenuItem>
-            <ContextMenuItem
+            </DropdownMenuItem>
+            <DropdownMenuItem
               className="text-destructive focus:text-destructive focus:bg-destructive/10"
               onClick={() => onContextAction('delete', node.id, node.isFolder)}
             >
               <Trash2 className="h-4 w-4 mr-2" />
               Delete
-            </ContextMenuItem>
-          </ContextMenuContent>
-        </ContextMenu>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Render children if folder is expanded */}

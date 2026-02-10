@@ -13,6 +13,7 @@ import { sessionPool } from './pool';
 import { config, validateConfig } from './config';
 import { getOrCreateSessionNetwork, deleteSessionNetwork, getNetworkName, cleanupOrphanedNetworks, getNetworkStats, getSubnetStats, getNetworkMetrics } from './networkManager';
 import { kernelManager } from './kernelManager';
+import { getWorkerPool, shutdownWorkerPool } from './workerPool';
 
 // Re-read environment variables into config after dotenv load
 (config.docker as any).memory = process.env.DOCKER_MEMORY || '512m';
@@ -238,7 +239,21 @@ class ExecutionQueue {
   }
 }
 
-const executionQueue = new ExecutionQueue(config.sessionContainers.maxConcurrentSessions);
+const executionQueue = new ExecutionQueue(
+  config.sessionContainers.maxConcurrentSessions,
+  config.executionQueue.maxQueueSize,
+  config.executionQueue.queueTimeout
+);
+
+// --- Worker Thread Pool (Optional) ---
+let workerPool: ReturnType<typeof getWorkerPool> | null = null;
+if (config.workerPool.enabled && config.workerPool.threads > 0) {
+  console.log(`[Server] Initializing worker pool with ${config.workerPool.threads} threads (experimental)`);
+  workerPool = getWorkerPool(true);
+  console.log('[Server] Worker pool initialized');
+} else {
+  console.log('[Server] Worker pool disabled - using ExecutionQueue only');
+}
 
 // --- Kernel Manager Callbacks ---
 // Set up kernel output and status streaming to clients
@@ -722,12 +737,19 @@ app.get('/api/queue-stats', (req, res) => {
       warnings.push(`High failure rate: ${stats.failedTasks} failed out of ${stats.completedTasks + stats.failedTasks} total`);
     }
     
-    res.json({
+    const response: any = {
       status: 'ok',
       timestamp: new Date().toISOString(),
       queue: stats,
       warnings,
-    });
+    };
+    
+    // Add worker pool stats if enabled
+    if (workerPool && workerPool.isEnabled()) {
+      response.workerPool = workerPool.getStats();
+    }
+    
+    res.json(response);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -1095,6 +1117,13 @@ if (require.main === module) {
       clearInterval(ttlCleanupTimer);
       clearInterval(networkCleanupTimer);
       clearInterval(networkStatsInterval);
+      
+      // Shutdown worker pool if enabled
+      if (workerPool && workerPool.isEnabled()) {
+        console.log('[Shutdown] Stopping worker pool...');
+        await shutdownWorkerPool();
+        console.log('[Shutdown] Worker pool stopped');
+      }
       
       await sessionPool.cleanupAll();
       await cleanupOrphanedNetworks(0); // Clean up all networks on shutdown

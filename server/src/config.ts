@@ -66,6 +66,19 @@ export const config = {
     preWarmPool: process.env.PREWARM_POOL === 'true',
   },
 
+  // === Execution Queue Configuration ===
+  executionQueue: {
+    maxQueueSize: parseInt(process.env.MAX_QUEUE_SIZE || '200', 10),
+    queueTimeout: parseInt(process.env.QUEUE_TIMEOUT || '60000', 10), // ms
+    enablePriorityQueue: process.env.ENABLE_PRIORITY_QUEUE !== 'false',
+  },
+
+  // === Worker Thread Pool Configuration ===
+  workerPool: {
+    enabled: process.env.ENABLE_WORKER_POOL === 'true',
+    threads: parseInt(process.env.WORKER_THREADS || '0', 10),
+  },
+
   // === Container Runtime Images ===
   runtimes: {
     python: {

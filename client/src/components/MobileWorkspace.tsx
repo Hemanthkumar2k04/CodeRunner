@@ -34,6 +34,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 
@@ -54,7 +61,7 @@ interface MobileWorkspaceProps {
 interface FileTreeNodeProps {
   nodeId: string;
   depth: number;
-  onLongPress: (nodeId: string, isFolder: boolean) => void;
+  onContextAction: (action: string, nodeId: string, isFolder: boolean) => void;
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string) => void;
   onFileSelect: () => void;
@@ -63,13 +70,12 @@ interface FileTreeNodeProps {
 function FileTreeNode({ 
   nodeId, 
   depth, 
-  onLongPress,
+  onContextAction,
   selectedNodeId, 
   onSelectNode,
   onFileSelect
 }: FileTreeNodeProps) {
   const [isExpanded, setIsExpanded] = useState(true);
-  const [pressTimer, setPressTimer] = useState<number | null>(null);
   const files = useEditorStore((state: EditorState) => state.files);
   const activeFileId = useEditorStore((state: EditorState) => state.activeFileId);
   const setActiveFile = useEditorStore((state: EditorState) => state.setActiveFile);
@@ -91,24 +97,6 @@ function FileTreeNode({
     }
   };
 
-  // Long press handling for mobile
-  const handleTouchStart = () => {
-    const timer = window.setTimeout(() => {
-      if (navigator.vibrate) {
-        navigator.vibrate(50);
-      }
-      onLongPress(nodeId, node.isFolder);
-    }, 500);
-    setPressTimer(timer);
-  };
-
-  const handleTouchEnd = () => {
-    if (pressTimer) {
-      clearTimeout(pressTimer);
-      setPressTimer(null);
-    }
-  };
-
   const isActive = activeFileId === node.id;
   const sortedChildren = sortFileNodes(node.children, files);
 
@@ -126,9 +114,6 @@ function FileTreeNode({
         )}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
         onClick={handleClick}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-        onTouchCancel={handleTouchEnd}
       >
         {node.isFolder ? (
           <>
@@ -152,20 +137,54 @@ function FileTreeNode({
           </>
         )}
         <span className="truncate flex-1 font-medium">{node.name}</span>
-        {/* Dirty state intentionally disabled; no indicator shown */}
-        <button
-          className={cn(
-            "p-1.5 rounded opacity-0 group-hover:opacity-100",
-            "hover:bg-sidebar-accent transition-opacity",
-            "active:bg-sidebar-accent/80"
-          )}
-          onClick={(e) => {
-            e.stopPropagation();
-            onLongPress(nodeId, node.isFolder);
-          }}
-        >
-          <MoreVertical className="h-4 w-4" />
-        </button>
+        {/* Three-dot menu */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className={cn(
+                "p-1.5 rounded opacity-0 group-hover:opacity-100",
+                "hover:bg-sidebar-accent transition-opacity",
+                "active:bg-sidebar-accent/80"
+              )}
+              onClick={(e) => e.stopPropagation()}
+              title={node.isFolder ? 'Folder options' : 'File options'}
+            >
+              <MoreVertical className="h-4 w-4" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            {node.isFolder && (
+              <>
+                <DropdownMenuItem
+                  onClick={() => onContextAction('newFile', node.id, true)}
+                >
+                  <FilePlus className="h-4 w-4 mr-2" />
+                  New File
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => onContextAction('newFolder', node.id, true)}
+                >
+                  <FolderPlus className="h-4 w-4 mr-2" />
+                  New Folder
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
+            <DropdownMenuItem
+              onClick={() => onContextAction('rename', node.id, node.isFolder)}
+            >
+              <Pencil className="h-4 w-4 mr-2" />
+              Rename
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive focus:bg-destructive/10"
+              onClick={() => onContextAction('delete', node.id, node.isFolder)}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {node.isFolder && isExpanded && sortedChildren.length > 0 && (
@@ -175,7 +194,7 @@ function FileTreeNode({
               key={childId}
               nodeId={childId}
               depth={depth + 1}
-              onLongPress={onLongPress}
+              onContextAction={onContextAction}
               selectedNodeId={selectedNodeId}
               onSelectNode={onSelectNode}
               onFileSelect={onFileSelect}
@@ -207,10 +226,6 @@ export function MobileWorkspace({ isOpen, onClose }: MobileWorkspaceProps) {
     name: string;
     isFolder: boolean;
   } | null>(null);
-  const [contextMenuNode, setContextMenuNode] = useState<{
-    id: string;
-    isFolder: boolean;
-  } | null>(null);
 
   const getParentIdForNewItem = useCallback(() => {
     if (!selectedNodeId) return null;
@@ -227,7 +242,6 @@ export function MobileWorkspace({ isOpen, onClose }: MobileWorkspaceProps) {
       setDialogState({ type, parentId, targetId, initialValue });
       setInputValue(initialValue);
       setInputError(null);
-      setContextMenuNode(null);
     },
     [files]
   );
@@ -238,9 +252,29 @@ export function MobileWorkspace({ isOpen, onClose }: MobileWorkspaceProps) {
     setInputError(null);
   }, []);
 
-  const handleLongPress = useCallback((nodeId: string, isFolder: boolean) => {
-    setContextMenuNode({ id: nodeId, isFolder });
-  }, []);
+  const handleContextAction = useCallback(
+    (action: string, nodeId: string, isFolder: boolean) => {
+      const node = files[nodeId];
+      if (!node) return;
+
+      switch (action) {
+        case 'newFile':
+          openDialog('newFile', nodeId);
+          break;
+        case 'newFolder':
+          openDialog('newFolder', nodeId);
+          break;
+        case 'rename':
+          openDialog('rename', null, nodeId);
+          break;
+        case 'delete': {
+          setDeleteConfirm({ id: nodeId, name: node.name, isFolder });
+          break;
+        }
+      }
+    },
+    [files, openDialog]
+  );
 
   const handleSubmit = useCallback(() => {
     const trimmedValue = inputValue.trim();
@@ -379,7 +413,7 @@ export function MobileWorkspace({ isOpen, onClose }: MobileWorkspaceProps) {
                   key={nodeId}
                   nodeId={nodeId}
                   depth={0}
-                  onLongPress={handleLongPress}
+                  onContextAction={handleContextAction}
                   selectedNodeId={selectedNodeId}
                   onSelectNode={setSelectedNodeId}
                   onFileSelect={onClose}
@@ -388,72 +422,6 @@ export function MobileWorkspace({ isOpen, onClose }: MobileWorkspaceProps) {
             )}
           </div>
         </ScrollArea>
-
-        {/* Context Menu Dialog (Mobile Alternative) */}
-        <Dialog open={contextMenuNode !== null} onOpenChange={(open) => !open && setContextMenuNode(null)}>
-          <DialogContent className="max-w-[90vw] sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>
-                {contextMenuNode && files[contextMenuNode.id]?.name}
-              </DialogTitle>
-              <DialogDescription>Choose an action</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-2 py-4">
-              {contextMenuNode?.isFolder && (
-                <>
-                  <Button
-                    variant="outline"
-                    className="justify-start h-12 touch-manipulation"
-                    onClick={() => openDialog('newFile', contextMenuNode.id)}
-                  >
-                    <FilePlus className="h-4 w-4 mr-3" />
-                    New File
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="justify-start h-12 touch-manipulation"
-                    onClick={() => openDialog('newFolder', contextMenuNode.id)}
-                  >
-                    <FolderPlus className="h-4 w-4 mr-3" />
-                    New Folder
-                  </Button>
-                </>
-              )}
-              <Button
-                variant="outline"
-                className="justify-start h-12 touch-manipulation"
-                onClick={() => {
-                  if (contextMenuNode) {
-                    openDialog('rename', null, contextMenuNode.id);
-                  }
-                }}
-              >
-                <Pencil className="h-4 w-4 mr-3" />
-                Rename
-              </Button>
-              <Button
-                variant="destructive"
-                className="justify-start h-12 touch-manipulation"
-                onClick={() => {
-                  if (contextMenuNode) {
-                    const node = files[contextMenuNode.id];
-                    if (node) {
-                      setDeleteConfirm({
-                        id: contextMenuNode.id,
-                        name: node.name,
-                        isFolder: contextMenuNode.isFolder,
-                      });
-                      setContextMenuNode(null);
-                    }
-                  }
-                }}
-              >
-                <Trash2 className="h-4 w-4 mr-3" />
-                Delete
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
 
         {/* Create/Rename Dialog */}
         <Dialog open={dialogState.type !== null} onOpenChange={(open) => !open && closeDialog()}>

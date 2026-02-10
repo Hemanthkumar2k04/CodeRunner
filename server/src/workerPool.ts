@@ -8,6 +8,7 @@
 import { Worker } from 'worker_threads';
 import { cpus } from 'os';
 import path from 'path';
+import { config } from './config';
 
 export interface WorkerTask {
   id: string;
@@ -332,7 +333,7 @@ let workerPoolInstance: WorkerThreadPool | null = null;
  */
 export function getWorkerPool(enabled: boolean = true): WorkerThreadPool {
   if (!workerPoolInstance) {
-    const poolSize = parseInt(process.env.WORKER_THREADS || '0', 10) || undefined;
+    const poolSize = config.workerPool.threads || undefined;
     workerPoolInstance = new WorkerThreadPool(poolSize, undefined, enabled);
   }
   return workerPoolInstance;
