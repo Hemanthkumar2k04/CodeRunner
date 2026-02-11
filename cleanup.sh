@@ -55,23 +55,12 @@ else
   log "✓ No containers found."
 fi
 
-# 2. Disconnect any remaining containers from CodeRunner networks
-log "Step 2: Disconnecting containers from CodeRunner networks..."
-CODERUNNER_NETWORKS=$(docker network ls --filter "name=${NETWORK_PREFIX}" --format "{{.Name}}" 2>/dev/null || true)
-if [ -n "$CODERUNNER_NETWORKS" ]; then
-  for network in $CODERUNNER_NETWORKS; do
-    # Get containers still attached to this network
-    ATTACHED=$(docker network inspect "$network" --format '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null | tr ' ' '\n' | grep -v '^$' || true)
-    if [ -n "$ATTACHED" ]; then
-      for container in $ATTACHED; do
-        docker network disconnect -f "$network" "$container" >/dev/null 2>&1 || true
-      done
-    fi
-  done
-  log "✓ Containers disconnected from networks."
-fi
+# 2. Fast bulk network removal (skip individual disconnection since containers are already removed)
+log "Step 2: Preparing for network removal..."
+# Containers are already killed/removed in Step 1, so networks should be disconnectable
+sleep 2  # Brief wait for Docker to fully process container removals
 
-# 3. Remove all CodeRunner networks
+# 3. Remove all CodeRunner networks (with parallel processing for speed)
 log "Step 3: Removing CodeRunner networks..."
 
 # Method A: Find by name prefix
@@ -86,7 +75,10 @@ NETWORKS=$(printf "%s\n%s" "$NETWORKS_BY_NAME" "$NETWORKS_BY_LABEL" | sort -u | 
 if [ -n "$NETWORKS" ]; then
   COUNT=$(echo "$NETWORKS" | wc -l)
   log "Found ${COUNT} networks to remove."
-  echo "$NETWORKS" | xargs docker network rm >/dev/null 2>&1 || true
+  
+  # Use parallel processing for faster cleanup (max 10 concurrent deletions)
+  echo "$NETWORKS" | xargs -P 10 -n 1 docker network rm 2>/dev/null || true
+  
   log "✓ Networks removed."
 else
   log "✓ No networks found."

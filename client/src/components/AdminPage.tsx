@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
@@ -110,12 +110,23 @@ export function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     if (!adminKey) return;
 
+    // Cancel previous request if still pending
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    
+    abortControllerRef.current = new AbortController();
+
     try {
-      const response = await fetch(`/admin/stats?key=${adminKey}`);
+      const response = await fetch(`/admin/stats?key=${adminKey}`, {
+        signal: abortControllerRef.current.signal,
+        cache: 'no-store', // Prevent caching
+      });
       if (!response.ok) {
         if (response.status === 401) {
           // Key is no longer valid, log out
@@ -132,17 +143,25 @@ export function AdminPage() {
       setStats(data);
       setError(null);
     } catch (err: any) {
-      setError(err.message);
+      if (err.name !== 'AbortError') {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [adminKey]);
 
   // Load saved key from localStorage on mount
-  useEffect(() => {
-    const savedKey = localStorage.getItem('adminKey');
-    if (savedKey) {
+  useEffect(() => {2000); // 2 second refresh for more live updates
+    return () => {
+      clearInterval(interval);
+      // Cancel any pending request on unmount
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [isAuthenticated, adminKey, fetchStats
       setAdminKey(savedKey);
       setIsAuthenticated(true);
     }
