@@ -32,6 +32,7 @@ export interface FileNode {
   children: string[]; // Array of child IDs for folders
   parentId: string | null;
   isModified: boolean;
+  isBinary?: boolean; // Flag for binary files (images, etc.)
 }
 
 export interface OutputEntry {
@@ -70,6 +71,7 @@ export interface EditorState {
   updateContent: (id: string, content: string) => { success: boolean; error?: string };
   deleteNode: (id: string) => void;
   renameNode: (id: string, newName: string) => { success: boolean; error?: string };
+  uploadFiles: (files: File[], parentId: string | null) => Promise<{ success: boolean; error?: string; uploadedCount?: number }>;
   
   // Actions - Editor
   setActiveFile: (id: string | null) => void;
@@ -606,6 +608,180 @@ export const useEditorStore = create<EditorState>()(
             content: f.content,
             toBeExec: f.id === activeFile?.id,
           }));
+      },
+
+      uploadFiles: async (files: File[], parentId: string | null) => {
+        console.log('[uploadFiles] Starting upload:', { fileCount: files.length, parentId });
+        
+        if (!files || files.length === 0) {
+          return { success: false, error: 'No files selected' };
+        }
+
+        let totalNewSize = 0;
+        const fileDataList: Array<{ path: string; content: string; size: number; isBinary?: boolean }> = [];
+
+        // Read all files and validate sizes
+        try {
+          console.log('[uploadFiles] Reading files...');
+          for (const file of files) {
+            console.log('[uploadFiles] Reading file:', { name: file.name, type: file.type, size: file.size });
+            
+            // Check file size before reading
+            if (file.size > MAX_FILE_SIZE) {
+              return { success: false, error: `File "${file.name}" exceeds size limit of ${MAX_FILE_SIZE / 1024}KB` };
+            }
+            
+            // Determine if file is binary based on type or extension
+            const isBinary = file.type.startsWith('image/') || 
+                           file.type.startsWith('audio/') || 
+                           file.type.startsWith('video/') ||
+                           file.type === 'application/octet-stream' ||
+                           /\.(png|jpg|jpeg|gif|bmp|ico|pdf|zip|tar|gz|exe|dll|so|dylib)$/i.test(file.name);
+            
+            let content: string;
+            
+            if (isBinary) {
+              // Read binary files as data URL (base64)
+              content = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target?.result as string || '');
+                reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
+                reader.readAsDataURL(file);
+              });
+            } else {
+              // Read text files as text
+              content = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target?.result as string || '');
+                reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
+                reader.readAsText(file);
+              });
+            }
+
+            const size = file.size; // Use actual file size instead of content length
+            console.log('[uploadFiles] File read:', { name: file.name, size, isBinary, contentLength: content.length });
+
+            totalNewSize += size;
+            
+            // Use webkitRelativePath if available (from folder upload), otherwise just the name
+            const filePath = (file as any).webkitRelativePath || file.name;
+            fileDataList.push({ path: filePath, content, size, isBinary });
+          }
+
+          // Check total size
+          const currentTotalSize = get().getTotalSize();
+          console.log('[uploadFiles] Size check:', { currentTotalSize, totalNewSize, max: MAX_TOTAL_SIZE });
+          
+          if (currentTotalSize + totalNewSize > MAX_TOTAL_SIZE) {
+            return { 
+              success: false, 
+              error: `Upload would exceed workspace size limit of ${MAX_TOTAL_SIZE / (1024 * 1024)}MB` 
+            };
+          }
+        } catch (error: any) {
+          console.error('[uploadFiles] Error reading files:', error);
+          return { success: false, error: error.message };
+        }
+
+        // Create folder structure and files
+        console.log('[uploadFiles] Creating files in workspace...');
+        const folderMap = new Map<string, string>(); // path -> id
+        let uploadedCount = 0;
+
+        try {
+          for (const fileData of fileDataList) {
+            const pathParts = fileData.path.split('/');
+            const fileName = pathParts[pathParts.length - 1];
+            
+            console.log('[uploadFiles] Processing:', { path: fileData.path, fileName, pathParts });
+            
+            // Handle folder structure
+            let currentParentId = parentId;
+            if (pathParts.length > 1) {
+              const folderPaths = pathParts.slice(0, -1);
+              let currentPath = '';
+              
+              for (const folderName of folderPaths) {
+                currentPath = currentPath ? `${currentPath}/${folderName}` : folderName;
+                
+                if (!folderMap.has(currentPath)) {
+                  // Create folder
+                  const currentState = get();
+                  const result = currentState.addFolder(folderName, currentParentId);
+                  console.log('[uploadFiles] Create folder result:', { folderName, result });
+                  
+                  if (result.success && result.id) {
+                    folderMap.set(currentPath, result.id);
+                    currentParentId = result.id;
+                  } else if (!result.success && result.error?.includes('already exists')) {
+                    // Folder exists, find it
+                    const freshState = get();
+                    const siblings = currentParentId
+                      ? freshState.files[currentParentId]?.children || []
+                      : freshState.rootIds;
+                    const existingFolder = siblings.find(id => {
+                      const node = freshState.files[id];
+                      return node?.name === folderName && node?.isFolder;
+                    });
+                    if (existingFolder) {
+                      folderMap.set(currentPath, existingFolder);
+                      currentParentId = existingFolder;
+                      console.log('[uploadFiles] Found existing folder:', { folderName, id: existingFolder });
+                    } else {
+                      throw new Error(`Could not find existing folder: ${folderName}`);
+                    }
+                  } else {
+                    throw new Error(result.error || 'Failed to create folder');
+                  }
+                } else {
+                  currentParentId = folderMap.get(currentPath)!;
+                }
+              }
+            }
+
+            // Create the file with content directly
+            const currentState = get();
+            const fileResult = currentState.addFile(fileName, currentParentId);
+            console.log('[uploadFiles] Create file result:', { fileName, result: fileResult });
+            
+            if (fileResult.success && fileResult.id) {
+              // Update file with both content and binary flag in one operation
+              set(state => {
+                const file = state.files[fileResult.id!];
+                if (!file) return state;
+                
+                return {
+                  files: {
+                    ...state.files,
+                    [fileResult.id!]: {
+                      ...file,
+                      content: fileData.content,
+                      isBinary: fileData.isBinary || false,
+                    }
+                  }
+                };
+              });
+              
+              console.log('[uploadFiles] File updated:', { 
+                fileName, 
+                fileId: fileResult.id,
+                isBinary: fileData.isBinary,
+                contentLength: fileData.content.length,
+                contentPreview: fileData.content.substring(0, 50)
+              });
+              
+              uploadedCount++;
+            } else if (!fileResult.success) {
+              console.warn(`Failed to create file "${fileName}": ${fileResult.error}`);
+            }
+          }
+
+          console.log('[uploadFiles] Upload complete:', { uploadedCount });
+          return { success: true, uploadedCount };
+        } catch (error: any) {
+          console.error('[uploadFiles] Error creating files:', error);
+          return { success: false, error: error.message, uploadedCount };
+        }
       },
     }),
     {

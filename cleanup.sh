@@ -28,11 +28,17 @@ log "Step 1: Identifying and removing containers in CodeRunner networks..."
 CONTAINERS_IN_NETWORKS=$(docker network ls --filter "name=${NETWORK_PREFIX}" --quiet | \
   xargs -I {} docker network inspect {} --format '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null | tr ' ' '\n' | grep -v '^$' || echo "")
 
-# Method B & C
-CONTAINERS_BY_LABEL=$(docker ps -a --filter "label=type=coderunner-session" --quiet)
+# Method B: Find session containers by label
+CONTAINERS_SESSION=$(docker ps -a --filter "label=type=coderunner-session" --quiet)
 
-# Combine and deduplicate
-ALL_CONTAINERS=$(printf "%s\n%s" "$CONTAINERS_IN_NETWORKS" "$CONTAINERS_BY_LABEL" | sort -u | grep -v '^$' || true)
+# Method C: Find kernel containers by label
+CONTAINERS_KERNEL=$(docker ps -a --filter "label=type=coderunner-kernel" --quiet)
+
+# Method D: Find any containers with coderunner in the name (safety net)
+CONTAINERS_BY_NAME=$(docker ps -a --filter "name=coderunner" --quiet)
+
+# Combine and deduplicate all methods
+ALL_CONTAINERS=$(printf "%s\n%s\n%s\n%s" "$CONTAINERS_IN_NETWORKS" "$CONTAINERS_SESSION" "$CONTAINERS_KERNEL" "$CONTAINERS_BY_NAME" | sort -u | grep -v '^$' || true)
 
 if [ -n "$ALL_CONTAINERS" ]; then
   COUNT=$(echo "$ALL_CONTAINERS" | wc -l)
@@ -48,7 +54,15 @@ fi
 
 # 2. Remove all CodeRunner networks
 log "Step 2: Removing CodeRunner networks..."
-NETWORKS=$(docker network ls --filter "name=${NETWORK_PREFIX}" --quiet)
+
+# Method A: Find by name prefix
+NETWORKS_BY_NAME=$(docker network ls --filter "name=${NETWORK_PREFIX}" --quiet)
+
+# Method B: Find by label (safety net)
+NETWORKS_BY_LABEL=$(docker network ls --filter "label=type=coderunner" --quiet)
+
+# Combine and deduplicate
+NETWORKS=$(printf "%s\n%s" "$NETWORKS_BY_NAME" "$NETWORKS_BY_LABEL" | sort -u | grep -v '^$' || true)
 
 if [ -n "$NETWORKS" ]; then
   COUNT=$(echo "$NETWORKS" | wc -l)
@@ -57,6 +71,23 @@ if [ -n "$NETWORKS" ]; then
   log "✓ Networks removed."
 else
   log "✓ No networks found."
+fi
+
+# 3. Final verification
+log "Step 3: Verifying cleanup..."
+REMAINING_CONTAINERS=$(docker ps -a --filter "label=type=coderunner-session" --quiet; docker ps -a --filter "label=type=coderunner-kernel" --quiet | sort -u | grep -v '^$' || true)
+REMAINING_NETWORKS=$(docker network ls --filter "name=${NETWORK_PREFIX}" --quiet; docker network ls --filter "label=type=coderunner" --quiet | sort -u | grep -v '^$' || true)
+
+if [ -n "$REMAINING_CONTAINERS" ]; then
+  log "⚠ Warning: Found $(echo "$REMAINING_CONTAINERS" | wc -l) remaining containers"
+else
+  log "✓ No remaining containers"
+fi
+
+if [ -n "$REMAINING_NETWORKS" ]; then
+  log "⚠ Warning: Found $(echo "$REMAINING_NETWORKS" | wc -l) remaining networks"
+else
+  log "✓ No remaining networks"
 fi
 
 log "✓ Cleanup complete."

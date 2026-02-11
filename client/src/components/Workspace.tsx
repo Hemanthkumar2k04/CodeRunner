@@ -12,6 +12,8 @@ import {
   MoreVertical,
   FileCode,
   Home,
+  Upload,
+  FolderUp,
 } from 'lucide-react';
 import { useEditorStore } from '@/stores/useEditorStore';
 import type { EditorState } from '@/stores/useEditorStore';
@@ -203,6 +205,7 @@ export function Workspace() {
   const addFolder = useEditorStore((state: EditorState) => state.addFolder);
   const deleteNode = useEditorStore((state: EditorState) => state.deleteNode);
   const renameNode = useEditorStore((state: EditorState) => state.renameNode);
+  const uploadFiles = useEditorStore((state: EditorState) => state.uploadFiles);
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [dialogState, setDialogState] = useState<DialogState>({
@@ -314,6 +317,59 @@ export function Workspace() {
     }
   }, [deleteConfirm, deleteNode]);
 
+  const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = event.target.files;
+    if (!fileList || fileList.length === 0) return;
+
+    const filesArray = Array.from(fileList);
+    const parentId = getParentIdForNewItem();
+
+    console.log(`Uploading ${filesArray.length} file(s)...`);
+
+    try {
+      const result = await uploadFiles(filesArray, parentId);
+      if (result.success) {
+        console.log(`Successfully uploaded ${result.uploadedCount} file(s)`);
+        // Show success feedback if needed
+      } else {
+        console.error('Upload failed:', result.error);
+        alert(`Upload failed: ${result.error}`);
+      }
+    } catch (error: any) {
+      console.error('Upload error:', error);
+      alert(`Upload error: ${error.message || 'Upload failed'}`);
+    }
+
+    // Reset input
+    event.target.value = '';
+  }, [uploadFiles, getParentIdForNewItem]);
+
+  const handleFolderUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = event.target.files;
+    if (!fileList || fileList.length === 0) return;
+
+    const filesArray = Array.from(fileList);
+    const parentId = getParentIdForNewItem();
+
+    console.log(`Uploading folder with ${filesArray.length} file(s)...`);
+
+    try {
+      const result = await uploadFiles(filesArray, parentId);
+      if (result.success) {
+        console.log(`Successfully uploaded folder with ${result.uploadedCount} file(s)`);
+      } else {
+        console.error('Folder upload failed:', result.error);
+        alert(`Folder upload failed: ${result.error}`);
+      }
+    } catch (error: any) {
+      console.error('Folder upload error:', error);
+      alert(`Folder upload error: ${error.message || 'Upload failed'}`);
+    }
+
+    // Reset input
+    event.target.value = '';
+  }, [uploadFiles, getParentIdForNewItem]);
+
   const getDialogTitle = () => {
     switch (dialogState.type) {
       case 'newFile':
@@ -394,6 +450,49 @@ export function Workspace() {
               </TooltipTrigger>
               <TooltipContent>New Folder</TooltipContent>
             </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 hover:bg-sidebar-accent"
+                  onClick={() => document.getElementById('file-upload-input')?.click()}
+                >
+                  <Upload className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Upload Files</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 hover:bg-sidebar-accent"
+                  onClick={() => document.getElementById('folder-upload-input')?.click()}
+                >
+                  <FolderUp className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Upload Folder</TooltipContent>
+            </Tooltip>
+            <input
+              id="file-upload-input"
+              type="file"
+              multiple
+              accept="*/*"
+              onChange={handleFileUpload}
+              style={{ display: 'none' }}
+              aria-label="Upload files"
+            />
+            <input
+              id="folder-upload-input"
+              type="file"
+              {...({ webkitdirectory: '', directory: '' } as any)}
+              onChange={handleFolderUpload}
+              style={{ display: 'none' }}
+              aria-label="Upload folder"
+            />
           </div>
         </div>
 

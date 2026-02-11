@@ -8,6 +8,7 @@ import type { EditorState } from '@/stores/useEditorStore';
 import { getMonacoLanguage, getLanguageFromExtension, formatBytes, getFileSize } from '@/lib/file-utils';
 import { isNotebookFile } from '@/lib/notebook-utils';
 import { NotebookEditor } from './NotebookEditor';
+import { FilePreview } from './FilePreview';
 import { disableMonacoClipboard } from '@/lib/clipboard-blocker';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -47,6 +48,22 @@ export function CodeEditor({ onRunClick, onStopClick }: CodeEditorProps) {
   const language = activeFile ? getMonacoLanguage(activeFile.name) : 'plaintext';
   const execLanguage = activeFile ? getLanguageFromExtension(activeFile.name) : null;
   const isNotebook = activeFile ? isNotebookFile(activeFile.name) : false;
+  
+  // Detect if file should use preview (images, CSV, binary)
+  const shouldUsePreview = activeFile && (
+    activeFile.isBinary || 
+    /\.(png|jpg|jpeg|gif|bmp|svg|webp|ico|csv|tsv|pdf)$/i.test(activeFile.name)
+  );
+  
+  // Debug logging
+  if (activeFile && shouldUsePreview) {
+    console.log('[CodeEditor] Using preview for:', {
+      fileName: activeFile.name,
+      isBinary: activeFile.isBinary,
+      contentLength: activeFile.content?.length,
+      contentPreview: activeFile.content?.substring(0, 50)
+    });
+  }
 
   const handleEditorWillMount = useCallback((monaco: Monaco) => {
     // Ensure all necessary languages are registered and available
@@ -254,7 +271,13 @@ export function CodeEditor({ onRunClick, onStopClick }: CodeEditorProps) {
 
         {/* Editor */}
         <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
-          {isNotebook && activeFile ? (
+          {shouldUsePreview && activeFile ? (
+            <FilePreview
+              fileName={activeFile.name}
+              content={activeFile.content}
+              isBinary={activeFile.isBinary}
+            />
+          ) : isNotebook && activeFile ? (
             <NotebookEditor
               fileId={activeFileId!}
               content={activeFile.content}
