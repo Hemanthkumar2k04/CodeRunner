@@ -47,13 +47,32 @@ if [ -n "$ALL_CONTAINERS" ]; then
   # Kill and remove using standard xargs (gnu -r is avoided by check above, but safe to just Pipe if empty is impossible or handled)
   echo "$ALL_CONTAINERS" | xargs docker kill >/dev/null 2>&1 || true
   echo "$ALL_CONTAINERS" | xargs docker rm -f >/dev/null 2>&1 || true
+  
+  # Wait briefly for containers to be fully removed
+  sleep 1
   log "✓ Containers removed."
 else
   log "✓ No containers found."
 fi
 
-# 2. Remove all CodeRunner networks
-log "Step 2: Removing CodeRunner networks..."
+# 2. Disconnect any remaining containers from CodeRunner networks
+log "Step 2: Disconnecting containers from CodeRunner networks..."
+CODERUNNER_NETWORKS=$(docker network ls --filter "name=${NETWORK_PREFIX}" --format "{{.Name}}" 2>/dev/null || true)
+if [ -n "$CODERUNNER_NETWORKS" ]; then
+  for network in $CODERUNNER_NETWORKS; do
+    # Get containers still attached to this network
+    ATTACHED=$(docker network inspect "$network" --format '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null | tr ' ' '\n' | grep -v '^$' || true)
+    if [ -n "$ATTACHED" ]; then
+      for container in $ATTACHED; do
+        docker network disconnect -f "$network" "$container" >/dev/null 2>&1 || true
+      done
+    fi
+  done
+  log "✓ Containers disconnected from networks."
+fi
+
+# 3. Remove all CodeRunner networks
+log "Step 3: Removing CodeRunner networks..."
 
 # Method A: Find by name prefix
 NETWORKS_BY_NAME=$(docker network ls --filter "name=${NETWORK_PREFIX}" --quiet)
@@ -73,8 +92,8 @@ else
   log "✓ No networks found."
 fi
 
-# 3. Final verification
-log "Step 3: Verifying cleanup..."
+# 4. Final verification
+log "Step 4: Verifying cleanup..."
 REMAINING_CONTAINERS=$(docker ps -a --filter "label=type=coderunner-session" --quiet; docker ps -a --filter "label=type=coderunner-kernel" --quiet | sort -u | grep -v '^$' || true)
 REMAINING_NETWORKS=$(docker network ls --filter "name=${NETWORK_PREFIX}" --quiet; docker network ls --filter "label=type=coderunner" --quiet | sort -u | grep -v '^$' || true)
 
