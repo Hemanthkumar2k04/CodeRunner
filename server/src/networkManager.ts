@@ -532,3 +532,87 @@ export async function getNetworkStats(): Promise<{
 export function getNetworkMetrics(): NetworkCleanupMetrics {
   return { ...networkMetrics };
 }
+
+/**
+ * Aggressive bulk network cleanup (based on cleanup.sh script)
+ * Use when there are many orphaned networks (>100)
+ * This is much faster than the careful cleanup approach
+ */
+export async function aggressiveBulkNetworkCleanup(): Promise<number> {
+  try {
+    console.log('[NetworkManager] 🔥 Starting aggressive bulk network cleanup...');
+    const startTime = Date.now();
+    let removedCount = 0;
+
+    // Step 1: Get all CodeRunner networks
+    const networksResult = await safeExecAsync(
+      `docker network ls --filter "name=${config.network.sessionNetworkPrefix}" --quiet`,
+      { timeout: 10000 }
+    );
+
+    if (!networksResult.stdout.trim()) {
+      console.log('[NetworkManager] No networks found for bulk cleanup');
+      return 0;
+    }
+
+    const networkIds = networksResult.stdout.trim().split('\n').filter(id => id.trim());
+    console.log(`[NetworkManager] Found ${networkIds.length} networks for bulk removal`);
+
+    // Step 2: Force disconnect and remove all containers in these networks
+    console.log('[NetworkManager] Disconnecting containers from networks...');
+    for (const networkId of networkIds) {
+      try {
+        // Get containers in this network
+        const containersResult = await safeExecAsync(
+          `docker network inspect ${networkId} --format '{{range .Containers}}{{.Name}} {{end}}'`,
+          { timeout: 5000 }
+        );
+
+        if (containersResult.stdout.trim()) {
+          const containerNames = containersResult.stdout.trim().split(' ').filter(n => n.trim());
+          
+          // Force disconnect each container
+          for (const containerName of containerNames) {
+            await safeExecAsync(
+              `docker network disconnect -f ${networkId} ${containerName}`,
+              { timeout: 5000 }
+            ).catch(() => {
+              // Ignore errors - container might already be gone
+            });
+          }
+        }
+      } catch (error) {
+        // Continue even if this network fails
+      }
+    }
+
+    // Step 3: Brief pause for Docker to process disconnections
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Step 4: Bulk remove all networks in parallel batches
+    console.log('[NetworkManager] Bulk removing networks in parallel...');
+    const batchSize = 20; // Process 20 at a time
+    
+    for (let i = 0; i < networkIds.length; i += batchSize) {
+      const batch = networkIds.slice(i, i + batchSize);
+      const removePromises = batch.map(networkId =>
+        safeExecAsync(`docker network rm ${networkId}`, { timeout: 10000 })
+          .then(() => {
+            removedCount++;
+            return true;
+          })
+          .catch(() => false) // Ignore failures
+      );
+      
+      await Promise.all(removePromises);
+    }
+
+    const duration = Date.now() - startTime;
+    console.log(`[NetworkManager] ✅ Aggressive cleanup complete: removed ${removedCount}/${networkIds.length} networks in ${duration}ms`);
+    
+    return removedCount;
+  } catch (error) {
+    console.error('[NetworkManager] Aggressive bulk cleanup failed:', error);
+    return 0;
+  }
+}

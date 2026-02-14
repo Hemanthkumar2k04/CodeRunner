@@ -11,9 +11,9 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { sessionPool } from './pool';
 import { config, validateConfig } from './config';
-import { getOrCreateSessionNetwork, deleteSessionNetwork, getNetworkName, cleanupOrphanedNetworks, getNetworkStats, getSubnetStats, getNetworkMetrics } from './networkManager';
+import { getOrCreateSessionNetwork, deleteSessionNetwork, getNetworkName, cleanupOrphanedNetworks, aggressiveBulkNetworkCleanup, getNetworkStats, getSubnetStats, getNetworkMetrics } from './networkManager';
 import { kernelManager } from './kernelManager';
-import { getWorkerPool, shutdownWorkerPool } from './workerPool';
+
 import { adminMetrics } from './adminMetrics';
 import adminRoutes from './adminRoutes';
 import { startLoadTest, getTestRunner } from './testRunner';
@@ -254,16 +254,6 @@ const executionQueue = new ExecutionQueue(
 
 // Export for admin routes
 export { executionQueue };
-
-// --- Worker Thread Pool (Optional) ---
-let workerPool: ReturnType<typeof getWorkerPool> | null = null;
-if (config.workerPool.enabled && config.workerPool.threads > 0) {
-  console.log(`[Server] Initializing worker pool with ${config.workerPool.threads} threads (experimental)`);
-  workerPool = getWorkerPool(true);
-  console.log('[Server] Worker pool initialized');
-} else {
-  console.log('[Server] Worker pool disabled - using ExecutionQueue only');
-}
 
 // --- Kernel Manager Callbacks ---
 // Set up kernel output and status streaming to clients
@@ -841,11 +831,6 @@ app.get('/api/queue-stats', (req, res) => {
       warnings,
     };
     
-    // Add worker pool stats if enabled
-    if (workerPool && workerPool.isEnabled()) {
-      response.workerPool = workerPool.getStats();
-    }
-    
     res.json(response);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -1190,19 +1175,28 @@ if (require.main === module) {
           const networkMetrics = getNetworkMetrics();
           const stats = await getNetworkStats().catch(() => ({ empty: 0, total: 0, withContainers: 0 }));
           
-          // Calculate adaptive max age based on orphaned network count
-          let maxAge = 60000; // Default 1 minute
-          if (stats.empty > 50) {
-            maxAge = 0; // Emergency: Clean all orphaned networks immediately
-            console.warn(`[Cleanup] Emergency network cleanup triggered (${stats.empty} orphaned networks)`);
-          } else if (stats.empty > 20) {
-            maxAge = 30000; // Aggressive: 30 seconds
-            console.warn(`[Cleanup] Aggressive network cleanup (${stats.empty} orphaned networks)`);
+          // Use aggressive bulk cleanup for very high orphan counts (>100)
+          // This is based on the cleanup.sh script approach
+          if (stats.empty > 100) {
+            console.warn(`[Cleanup] 🔥 CRITICAL: ${stats.empty} orphaned networks! Using aggressive bulk cleanup...`);
+            await aggressiveBulkNetworkCleanup().catch(err =>
+              console.error('[Cleanup Job] Aggressive bulk cleanup failed:', err)
+            );
+          } else {
+            // Use careful cleanup for moderate counts
+            let maxAge = 60000; // Default 1 minute
+            if (stats.empty > 50) {
+              maxAge = 0; // Emergency: Clean all orphaned networks immediately
+              console.warn(`[Cleanup] Emergency network cleanup triggered (${stats.empty} orphaned networks)`);
+            } else if (stats.empty > 20) {
+              maxAge = 30000; // Aggressive: 30 seconds
+              console.warn(`[Cleanup] Aggressive network cleanup (${stats.empty} orphaned networks)`);
+            }
+            
+            await cleanupOrphanedNetworks(maxAge).catch(err => 
+              console.error('[Cleanup Job] Orphaned networks cleanup failed:', err)
+            );
           }
-          
-          await cleanupOrphanedNetworks(maxAge).catch(err => 
-            console.error('[Cleanup Job] Orphaned networks cleanup failed:', err)
-          );
           
           // Adapt network cleanup interval based on metrics
           if (stats.empty > 20 || networkMetrics.cleanupErrors > 5) {
@@ -1225,12 +1219,9 @@ if (require.main === module) {
     const snapshotInterval = setInterval(() => {
       const poolMetrics = sessionPool.getMetrics();
       const queueStats = executionQueue.getStats();
-      const workerStats = workerPool && workerPool.isEnabled() 
-        ? workerPool.getStats() 
-        : { totalWorkers: 0, activeWorkers: 0 };
       
       adminMetrics.takeSnapshot(
-        workerStats.totalWorkers,
+        0, // No worker threads used
         poolMetrics.totalActiveContainers,
         queueStats.queued
       );
@@ -1258,13 +1249,6 @@ if (require.main === module) {
       clearInterval(networkCleanupTimer);
       clearInterval(networkStatsInterval);
       clearInterval(snapshotInterval);
-      
-      // Shutdown worker pool if enabled
-      if (workerPool && workerPool.isEnabled()) {
-        console.log('[Shutdown] Stopping worker pool...');
-        await shutdownWorkerPool();
-        console.log('[Shutdown] Worker pool stopped');
-      }
       
       await sessionPool.cleanupAll();
       await cleanupOrphanedNetworks(0); // Clean up all networks on shutdown

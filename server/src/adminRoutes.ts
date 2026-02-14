@@ -7,7 +7,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { adminMetrics } from './adminMetrics';
 import { sessionPool } from './pool';
 import { getNetworkStats, getNetworkMetrics, getSubnetStats } from './networkManager';
-import { getWorkerPool } from './workerPool';
+
 import { config } from './config';
 
 const router = Router();
@@ -51,7 +51,6 @@ router.get('/stats', adminAuth, async (req: Request, res: Response) => {
     const networkStats = await getNetworkStats();
     const networkMetrics = getNetworkMetrics();
     const subnetStats = getSubnetStats();
-    const workerPool = getWorkerPool(false);
     
     // Get execution queue stats - import at runtime to avoid circular dependency
     let queueStats = {
@@ -77,9 +76,7 @@ router.get('/stats', adminAuth, async (req: Request, res: Response) => {
         port: config.server.port,
         uptime: process.uptime(),
       },
-      workers: workerPool && workerPool.isEnabled() 
-        ? workerPool.getStats() 
-        : { totalWorkers: 0, activeWorkers: 0, idleWorkers: 0 },
+      executionQueue: queueStats,
       containers: {
         active: sessionCount,
         created: poolMetrics.containersCreated,

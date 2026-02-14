@@ -73,12 +73,6 @@ export const config = {
     enablePriorityQueue: process.env.ENABLE_PRIORITY_QUEUE !== 'false',
   },
 
-  // === Worker Thread Pool Configuration ===
-  workerPool: {
-    enabled: process.env.ENABLE_WORKER_POOL === 'true',
-    threads: parseInt(process.env.WORKER_THREADS || '0', 10),
-  },
-
   // === Container Runtime Images ===
   runtimes: {
     python: {

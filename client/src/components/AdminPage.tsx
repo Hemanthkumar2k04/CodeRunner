@@ -45,10 +45,10 @@ interface ServerStats {
     port: number;
     uptime: number;
   };
-  workers: {
-    totalWorkers: number;
-    activeWorkers: number;
-    idleWorkers: number;
+  executionQueue: {
+    queued: number;
+    active: number;
+    maxConcurrent: number;
   };
   containers: {
     active: number;
@@ -507,19 +507,19 @@ export function AdminPage() {
 
       <div className="max-w-7xl mx-auto p-6 space-y-6 animate-in fade-in duration-500">
         {/* Real-time Metrics Grid */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <Card className="hover:shadow-lg transition-shadow duration-300">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Workers</CardTitle>
-              <Server className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Concurrent Executions</CardTitle>
+              <Activity className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.workers.activeWorkers}</div>
+              <div className="text-2xl font-bold">{stats.executionQueue.active}</div>
               <p className="text-xs text-muted-foreground">
-                {stats.workers.idleWorkers} idle / {stats.workers.totalWorkers} total
+                {stats.executionQueue.queued} queued / {stats.executionQueue.maxConcurrent} max
               </p>
               <Progress
-                value={(stats.workers.activeWorkers / (stats.workers.totalWorkers || 1)) * 100}
+                value={(stats.executionQueue.active / (stats.executionQueue.maxConcurrent || 1)) * 100}
                 className="mt-2"
               />
             </CardContent>
