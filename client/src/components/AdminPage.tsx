@@ -7,6 +7,7 @@ import { Input } from './ui/input';
 import { Skeleton } from './ui/skeleton';
 import { Progress } from './ui/progress';
 import { Separator } from './ui/separator';
+import { TestRunnerModal } from './TestRunnerModal';
 import {
   BarChart,
   Bar,
@@ -18,6 +19,7 @@ import {
   PieChart,
   Pie,
   Cell,
+  LabelList,
 } from 'recharts';
 import {
   Activity,
@@ -33,6 +35,7 @@ import {
   Lock,
   LogOut,
   RotateCcw,
+  Zap,
 } from 'lucide-react';
 
 interface ServerStats {
@@ -110,10 +113,28 @@ export function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [showTestModal, setShowTestModal] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const hasLoadedOnceRef = useRef(false);
+  const isFetchingRef = useRef(false);
 
   const fetchStats = useCallback(async () => {
+    console.log('[AdminPage] fetchStats called, adminKey:', adminKey ? 'present' : 'missing', 'isFetching:', isFetchingRef.current);
     if (!adminKey) return;
+    
+    // If already fetching, don't start a new request (prevents React Strict Mode double-mount issues)
+    if (isFetchingRef.current) {
+      console.log('[AdminPage] Already fetching, skipping...');
+      return;
+    }
+
+    // Only set loading on initial fetch (first time)
+    if (!hasLoadedOnceRef.current) {
+      console.log('[AdminPage] First fetch, setting loading=true');
+      setLoading(true);
+    }
+
+    isFetchingRef.current = true;
 
     // Cancel previous request if still pending
     if (abortControllerRef.current) {
@@ -123,6 +144,7 @@ export function AdminPage() {
     abortControllerRef.current = new AbortController();
 
     try {
+      console.log('[AdminPage] Fetching /admin/stats...');
       const response = await fetch(`/admin/stats?key=${adminKey}`, {
         signal: abortControllerRef.current.signal,
         cache: 'no-store', // Prevent caching
@@ -140,30 +162,32 @@ export function AdminPage() {
         throw new Error('Failed to fetch stats');
       }
       const data = await response.json();
+      console.log('[AdminPage] Stats received, setting state');
       setStats(data);
       setError(null);
+      hasLoadedOnceRef.current = true;
     } catch (err: any) {
+      console.log('[AdminPage] Fetch error:', err.name, err.message);
       if (err.name !== 'AbortError') {
         setError(err.message);
       }
     } finally {
+      console.log('[AdminPage] Fetch complete, setting loading=false');
       setLoading(false);
       setRefreshing(false);
+      isFetchingRef.current = false;
     }
   }, [adminKey]);
 
   // Load saved key from localStorage on mount
-  useEffect(() => {2000); // 2 second refresh for more live updates
-    return () => {
-      clearInterval(interval);
-      // Cancel any pending request on unmount
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    };
-  }, [isAuthenticated, adminKey, fetchStats
+  useEffect(() => {
+    const savedKey = localStorage.getItem('adminKey');
+    console.log('[AdminPage] Checking for saved key:', savedKey ? 'found' : 'not found');
+    if (savedKey) {
       setAdminKey(savedKey);
       setIsAuthenticated(true);
+      setLoading(true); // Set loading immediately when we have a saved key
+      console.log('[AdminPage] Set authenticated and loading');
     }
   }, []);
 
@@ -171,9 +195,16 @@ export function AdminPage() {
   useEffect(() => {
     if (!isAuthenticated || !adminKey) return;
 
+    console.log('[AdminPage] useEffect triggered - fetching stats');
     fetchStats();
-    const interval = setInterval(fetchStats, 5000);
-    return () => clearInterval(interval);
+    const interval = setInterval(() => {
+      console.log('[AdminPage] Interval fetch');
+      fetchStats();
+    }, 5000);
+    return () => {
+      console.log('[AdminPage] Cleanup - clearing interval');
+      clearInterval(interval);
+    };
   }, [isAuthenticated, adminKey]);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -210,6 +241,8 @@ export function AdminPage() {
     setKeyInput('');
     setStats(null);
     localStorage.removeItem('adminKey');
+    hasLoadedOnceRef.current = false;
+    isFetchingRef.current = false;
   };
 
   const handleRefresh = () => {
@@ -257,6 +290,7 @@ export function AdminPage() {
 
   // Show login form if not authenticated
   if (!isAuthenticated) {
+    console.log('[AdminPage] Rendering: Login form');
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
         <Card className="w-full max-w-md animate-in fade-in duration-500">
@@ -311,6 +345,7 @@ export function AdminPage() {
   }
 
   if (loading && !stats) {
+    console.log('[AdminPage] Rendering: Loading skeleton');
     return (
       <div className="min-h-screen bg-background p-6">
         <div className="max-w-7xl mx-auto space-y-6">
@@ -327,7 +362,9 @@ export function AdminPage() {
     );
   }
 
-  if (error || !stats) {
+  // Show error state only when there's an actual error
+  if (error) {
+    console.log('[AdminPage] Rendering: Error screen', error);
     return (
       <div className="min-h-screen bg-background p-6 flex items-center justify-center">
         <Card className="max-w-md w-full">
@@ -353,6 +390,37 @@ export function AdminPage() {
       </div>
     );
   }
+
+  // Defensive check - if no stats and no loading/error, something went wrong
+  if (!stats) {
+    console.log('[AdminPage] Rendering: Defensive error (no stats)', { loading, error, isAuthenticated });
+    return (
+      <div className="min-h-screen bg-background p-6 flex items-center justify-center">
+        <Card className="max-w-md w-full">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-destructive">
+              <AlertCircle className="h-5 w-5" />
+              Error
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground mb-4">Unable to load dashboard data</p>
+            <div className="flex gap-2">
+              <Button onClick={() => navigate('/')} variant="outline">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Go Home
+              </Button>
+              <Button onClick={() => window.location.reload()}>
+                Try Again
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  console.log('[AdminPage] Rendering: Dashboard with stats');
 
   const latencyData = [
     { name: 'Avg', value: stats.metrics.today.latency.average },
@@ -405,6 +473,15 @@ export function AdminPage() {
               >
                 <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
                 Refresh
+              </Button>
+              <Button
+                onClick={() => setShowTestModal(true)}
+                variant="outline"
+                size="sm"
+                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+              >
+                <Zap className="h-4 w-4 mr-2" />
+                Run Load Test
               </Button>
               <Button
                 onClick={handleReset}
@@ -522,7 +599,9 @@ export function AdminPage() {
                       borderRadius: '8px',
                     }}
                   />
-                  <Bar dataKey="value" fill="hsl(var(--primary))" radius={[8, 8, 0, 0]} />
+                  <Bar dataKey="value" fill="hsl(var(--primary))" radius={[8, 8, 0, 0]}>
+                    <LabelList dataKey="value" position="top" fill="hsl(var(--foreground))" fontSize={12} />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
@@ -664,6 +743,9 @@ export function AdminPage() {
           </Card>
         </div>
       </div>
+
+      {/* Test Runner Modal */}
+      <TestRunnerModal open={showTestModal} onOpenChange={setShowTestModal} />
     </div>
   );
 }

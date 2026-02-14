@@ -58,7 +58,7 @@ export const config = {
     orphanedNetworkAge: parseInt(process.env.ORPHANED_NETWORK_AGE || '300000', 10), // 5 minutes
     
     // Concurrency control for parallel execution requests
-    maxConcurrentSessions: parseInt(process.env.MAX_CONCURRENT_SESSIONS || '5', 10), // Number of simultaneous run requests
+    maxConcurrentSessions: parseInt(process.env.MAX_CONCURRENT_SESSIONS || '50', 10), // Number of simultaneous run requests (increased for load testing)
     
     // Pooling configuration
     maxPerSession: parseInt(process.env.MAX_CONTAINERS_PER_SESSION || '10', 10),

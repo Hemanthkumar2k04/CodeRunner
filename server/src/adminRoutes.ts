@@ -232,5 +232,80 @@ router.get('/history', adminAuth, (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /admin/run-load-test - Start a performance load test
+ */
+router.post('/run-load-test', adminAuth, async (req: Request, res: Response) => {
+  try {
+    const intensity = (req.query.intensity as string) || 'moderate';
+    
+    if (!['light', 'moderate', 'heavy'].includes(intensity)) {
+      return res.status(400).json({ error: 'Invalid intensity. Must be: light, moderate, or heavy' });
+    }
+    
+    // Dynamic import to avoid circular dependencies
+    const { startLoadTest } = await import('./testRunner');
+    const testId = await startLoadTest(intensity);
+    
+    res.json({ 
+      testId,
+      intensity,
+      status: 'started',
+      message: 'Load test started successfully'
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: `Failed to start load test: ${error.message}` });
+  }
+});
+
+/**
+ * GET /admin/load-test-reports - List all load test reports
+ */
+router.get('/load-test-reports', adminAuth, (req: Request, res: Response) => {
+  try {
+    const { getReports } = require('../tests/utils/report-manager');
+    const reports = getReports();
+    res.json(reports);
+  } catch (error: any) {
+    res.status(500).json({ error: `Failed to get reports: ${error.message}` });
+  }
+});
+
+/**
+ * GET /admin/load-test-reports/:id - Get a specific load test report
+ */
+router.get('/load-test-reports/:id', adminAuth, (req: Request, res: Response) => {
+  try {
+    const { getReport } = require('../tests/utils/report-manager');
+    const report = getReport(req.params.id);
+    
+    if (!report) {
+      return res.status(404).json({ error: 'Report not found' });
+    }
+    
+    res.json(report);
+  } catch (error: any) {
+    res.status(500).json({ error: `Failed to get report: ${error.message}` });
+  }
+});
+
+/**
+ * DELETE /admin/load-test-reports/:id - Delete a load test report
+ */
+router.delete('/load-test-reports/:id', adminAuth, (req: Request, res: Response) => {
+  try {
+    const { deleteReport } = require('../tests/utils/report-manager');
+    const success = deleteReport(req.params.id);
+    
+    if (!success) {
+      return res.status(404).json({ error: 'Report not found' });
+    }
+    
+    res.json({ message: 'Report deleted successfully' });
+  } catch (error: any) {
+    res.status(500).json({ error: `Failed to delete report: ${error.message}` });
+  }
+});
+
 export default router;
 export { ADMIN_KEY, adminAuth };
