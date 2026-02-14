@@ -6,7 +6,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { adminMetrics } from './adminMetrics';
 import { sessionPool } from './pool';
-import { getNetworkStats, getNetworkMetrics, getSubnetStats } from './networkManager';
+import { getNetworkStats, getNetworkMetrics, getSubnetStats, resetNetworkMetrics } from './networkManager';
 
 import { config } from './config';
 
@@ -75,6 +75,7 @@ router.get('/stats', adminAuth, async (req: Request, res: Response) => {
         environment: config.server.env,
         port: config.server.port,
         uptime: process.uptime(),
+        resources: adminMetrics.getSystemMetrics(),
       },
       executionQueue: queueStats,
       containers: {
@@ -188,6 +189,9 @@ router.get('/report/download', adminAuth, (req: Request, res: Response) => {
 router.post('/reset', adminAuth, async (req: Request, res: Response) => {
   try {
     adminMetrics.resetAllMetrics();
+    sessionPool.resetMetrics();
+    resetNetworkMetrics();
+    
     res.json({ 
       success: true,
       message: 'All metrics have been reset successfully'

@@ -3,6 +3,8 @@
  * Tracks detailed metrics for admin dashboard and reporting
  */
 
+import * as os from 'os';
+
 export interface RequestMetrics {
   requestId: string;
   timestamp: Date;
@@ -12,6 +14,23 @@ export interface RequestMetrics {
   success: boolean;
   sessionId: string;
   clientId: string; // socket.id or unique client identifier
+}
+
+export interface SystemMetrics {
+  cpu: number; // Percentage 0-100
+  memory: {
+    total: number; // Bytes
+    free: number; // Bytes
+    used: number; // Bytes
+    usagePercentage: number;
+    process: {
+      rss: number;
+      heapTotal: number;
+      heapUsed: number;
+    };
+  };
+  uptime: number; // Seconds
+  load: number[]; // Load average [1m, 5m, 15m]
 }
 
 export interface DailyMetrics {
@@ -44,12 +63,90 @@ class AdminMetricsService {
   private serverSnapshots: ServerSnapshot[] = [];
   private maxSnapshots: number = 1440; // Keep 24 hours of minute-by-minute snapshots
   
+  // System monitoring
+  private systemMetrics: SystemMetrics = {
+    cpu: 0,
+    memory: { 
+      total: 0, 
+      free: 0, 
+      used: 0, 
+      usagePercentage: 0, 
+      process: { rss: 0, heapTotal: 0, heapUsed: 0 } 
+    },
+    uptime: 0,
+    load: [],
+  };
+  private lastCpuUsage: { total: number; idle: number } = { total: 0, idle: 0 };
+
   constructor() {
     // Initialize today's metrics
     this.initializeDailyMetrics(this.getTodayDate());
+    this.startSystemMonitor();
     
     // Clean up old metrics every 24 hours
     setInterval(() => this.cleanupOldMetrics(), 24 * 60 * 60 * 1000);
+  }
+
+  private startSystemMonitor() {
+    // Initial CPU reading
+    this.updateSystemMetrics();
+    
+    // Update every 2 seconds
+    setInterval(() => {
+        this.updateSystemMetrics();
+    }, 2000);
+  }
+
+  private updateSystemMetrics() {
+    // CPU
+    const cpus = os.cpus();
+    let totalIdle = 0;
+    let totalTick = 0;
+
+    for (const cpu of cpus) {
+        for (const type in cpu.times) {
+            totalTick += (cpu.times as any)[type];
+        }
+        totalIdle += cpu.times.idle;
+    }
+
+    const idle = totalIdle / cpus.length;
+    const total = totalTick / cpus.length;
+
+    if (this.lastCpuUsage.total > 0) {
+        const idleDiff = idle - this.lastCpuUsage.idle;
+        const totalDiff = total - this.lastCpuUsage.total;
+        // avoid division by zero
+        const percentage = totalDiff > 0 ? 100 - (100 * idleDiff / totalDiff) : 0;
+        this.systemMetrics.cpu = Math.max(0, Math.min(100, parseFloat(percentage.toFixed(1))));
+    }
+
+    this.lastCpuUsage = { idle, total };
+
+    // Memory
+    const totalMem = os.totalmem();
+    const freeMem = os.freemem();
+    const usedMem = totalMem - freeMem;
+    const procMem = process.memoryUsage();
+
+    this.systemMetrics.memory = {
+      total: totalMem,
+      free: freeMem,
+      used: usedMem,
+      usagePercentage: parseFloat(((usedMem / totalMem) * 100).toFixed(1)),
+      process: {
+        rss: procMem.rss,
+        heapTotal: procMem.heapTotal,
+        heapUsed: procMem.heapUsed
+      }
+    };
+
+    this.systemMetrics.uptime = os.uptime();
+    this.systemMetrics.load = os.loadavg();
+  }
+
+  public getSystemMetrics(): SystemMetrics {
+    return this.systemMetrics;
   }
 
   /**

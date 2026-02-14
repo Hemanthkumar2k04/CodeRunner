@@ -1243,19 +1243,58 @@ if (require.main === module) {
     }, 300000);
 
     // Handle graceful shutdown
+    let isShuttingDown = false;
     const gracefulShutdown = async () => {
-      console.log('\nShutting down server...');
-      clearInterval(ttlCleanupTimer);
-      clearInterval(networkCleanupTimer);
-      clearInterval(networkStatsInterval);
-      clearInterval(snapshotInterval);
+      if (isShuttingDown) {
+        console.log('\nForce shutdown - exiting immediately');
+        process.exit(1);
+      }
       
-      await sessionPool.cleanupAll();
-      await cleanupOrphanedNetworks(0); // Clean up all networks on shutdown
-      server.close(() => {
-        console.log('Server closed.');
+      isShuttingDown = true;
+      console.log('\nShutting down server...');
+      
+      // Set a hard timeout - exit after 5 seconds no matter what
+      const shutdownTimeout = setTimeout(() => {
+        console.log('[Shutdown] Timeout reached - forcing exit');
         process.exit(0);
-      });
+      }, 5000);
+      
+      try {
+        // Clear timers
+        clearInterval(ttlCleanupTimer);
+        clearInterval(networkCleanupTimer);
+        clearInterval(networkStatsInterval);
+        clearInterval(snapshotInterval);
+        
+        // Cleanup with timeout
+        await Promise.race([
+          sessionPool.cleanupAll(),
+          new Promise(resolve => setTimeout(resolve, 3000))
+        ]);
+        
+        await Promise.race([
+          cleanupOrphanedNetworks(0),
+          new Promise(resolve => setTimeout(resolve, 2000))
+        ]);
+        
+        server.close(() => {
+          clearTimeout(shutdownTimeout);
+          console.log('Server closed.');
+          process.exit(0);
+        });
+        
+        // If server.close doesn't fire callback, force exit after 1s
+        setTimeout(() => {
+          clearTimeout(shutdownTimeout);
+          console.log('[Shutdown] Server close timeout - exiting');
+          process.exit(0);
+        }, 1000);
+        
+      } catch (error) {
+        console.error('[Shutdown] Error during cleanup:', error);
+        clearTimeout(shutdownTimeout);
+        process.exit(1);
+      }
     };
 
     process.on('SIGINT', gracefulShutdown);

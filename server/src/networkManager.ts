@@ -57,6 +57,24 @@ const networkMetrics: NetworkCleanupMetrics = {
 };
 
 /**
+ * Reset all network metrics counters
+ */
+export function resetNetworkMetrics(): void {
+  const currentActive = networkMetrics.totalActiveNetworks;
+  const currentOrphaned = networkMetrics.orphanedNetworkCount;
+  
+  networkMetrics.networksCreated = 0;
+  networkMetrics.networksDeleted = 0;
+  networkMetrics.cleanupErrors = 0;
+  networkMetrics.lastCleanupDuration = 0;
+  networkMetrics.totalActiveNetworks = currentActive; // Preserve current active state
+  networkMetrics.orphanedNetworkCount = currentOrphaned; // Preserve current orphaned state
+  networkMetrics.escalationLevel = 0;
+  
+  console.log('[NetworkManager] Metrics reset');
+}
+
+/**
  * Subnet Allocator - Manages IP subnet allocation from custom pools
  * Uses explicit subnet assignment to avoid Docker IPAM race conditions
  */

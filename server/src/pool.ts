@@ -56,6 +56,25 @@ class SessionContainerPool {
   }
 
   /**
+   * Reset all pool metrics
+   */
+  resetMetrics(): void {
+    const currentActive = this.metrics.totalActiveContainers; // Preserve current active count
+    
+    this.metrics = {
+      containersCreated: 0,
+      containersReused: 0,
+      containersDeleted: 0,
+      cleanupErrors: 0,
+      lastCleanupDuration: 0,
+      totalActiveContainers: currentActive, // Don't reset this to 0 if containers exist
+      queueDepth: 0,
+    };
+    
+    console.log('[Pool] Metrics have been reset');
+  }
+
+  /**
    * Cleanup expired containers (TTL exceeded)
    * Called by background job
    */
