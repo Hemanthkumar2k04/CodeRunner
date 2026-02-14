@@ -7,6 +7,8 @@ import { HomePage } from './components/HomePage';
 import { LabPage } from './components/LabPage';
 import { AdminPage } from './components/AdminPage';
 import { ResponsiveNavbar } from './components/ResponsiveNavbar';
+import { Button } from './components/ui/button';
+import { PanelLeftOpen, Folder } from 'lucide-react';
 import { MobileWorkspace } from './components/MobileWorkspace';
 import { Workspace } from './components/Workspace';
 import { CodeEditor } from './components/CodeEditor';
@@ -34,6 +36,7 @@ function EditorPage() {
   // Panel sizing state (desktop only)
   const [sidebarWidth, setSidebarWidth] = useState(320);
   const [isConsoleMinimized, setIsConsoleMinimized] = useState(true); // Start closed
+  const [isWorkspaceCollapsed, setIsWorkspaceCollapsed] = useState(false);
   
   // Resize state (desktop only)
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
@@ -174,35 +177,49 @@ function EditorPage() {
         ) : (
           <>
             {/* Desktop Sidebar */}
-            <div 
-              className="h-full flex-shrink-0 overflow-hidden"
-              style={{ width: sidebarWidth }}
-            >
-              <Workspace />
-            </div>
-
-            {/* Sidebar Resize Handle - Desktop only */}
-            <div
-              className={cn(
-                "group relative w-1 h-full flex-shrink-0 transition-all cursor-col-resize hover:w-1.5",
-                isResizingSidebar 
-                  ? 'bg-primary w-1.5' 
-                  : 'bg-border hover:bg-primary/60'
-              )}
-              onMouseDown={() => setIsResizingSidebar(true)}
-            >
-              {/* Visual indicator on hover */}
-              <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <div className="h-full w-full bg-primary/20" />
-              </div>
-              {/* Center grip indicator */}
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <div className="flex flex-col gap-1 p-1 rounded bg-primary/10">
-                  <div className="w-0.5 h-3 bg-primary/60 rounded-full" />
-                  <div className="w-0.5 h-3 bg-primary/60 rounded-full" />
+            {isWorkspaceCollapsed ? (
+              <div className="w-12 shrink-0 border-r flex flex-col items-center py-4 bg-sidebar">
+                <div 
+                  className="p-1.5 rounded-lg bg-sidebar-accent/50 cursor-pointer hover:bg-sidebar-accent/80 transition-colors"
+                  onClick={() => setIsWorkspaceCollapsed(false)}
+                  title="Expand sidebar"
+                >
+                  <Folder className="h-4 w-4 text-sidebar-foreground" />
                 </div>
               </div>
-            </div>
+            ) : (
+              <div 
+                className="h-full flex-shrink-0 overflow-hidden"
+                style={{ width: sidebarWidth }}
+              >
+                <Workspace onCollapse={() => setIsWorkspaceCollapsed(true)} />
+              </div>
+            )}
+
+            {/* Sidebar Resize Handle - Desktop only */}
+            {!isWorkspaceCollapsed && (
+              <div
+                className={cn(
+                  "group relative w-1 h-full flex-shrink-0 transition-all cursor-col-resize hover:w-1.5",
+                  isResizingSidebar 
+                    ? 'bg-primary w-1.5' 
+                    : 'bg-border hover:bg-primary/60'
+                )}
+                onMouseDown={() => setIsResizingSidebar(true)}
+              >
+                {/* Visual indicator on hover */}
+                <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="h-full w-full bg-primary/20" />
+                </div>
+                {/* Center grip indicator */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex flex-col gap-1 p-1 rounded bg-primary/10">
+                    <div className="w-0.5 h-3 bg-primary/60 rounded-full" />
+                    <div className="w-0.5 h-3 bg-primary/60 rounded-full" />
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
 

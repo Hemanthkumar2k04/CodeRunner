@@ -1,4 +1,4 @@
-import { Moon, Sun, AlertTriangle, Menu, X } from "lucide-react"
+import { Moon, Sun, AlertTriangle, Menu, X, Home } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useTheme } from "./theme-provider"
 import fabricLogo from "../assets/fabric.png"
@@ -89,6 +89,26 @@ export function ResponsiveNavbar({ onMenuClick, isMenuOpen }: ResponsiveNavbarPr
 
           {/* Action Buttons */}
           <div className="flex items-center gap-1 sm:gap-2">
+            
+            {/* Home Button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="hidden sm:flex items-center gap-2 hover:bg-accent h-9 sm:h-10"
+              onClick={() => window.location.href = "/"}
+            >
+              <Home className="h-4 w-4" />
+              <span>Home</span>
+            </Button>
+            <Button
+               variant="ghost"
+               size="icon"
+               className="sm:hidden h-9 w-9 hover:bg-accent"
+               onClick={() => window.location.href = "/"}
+            >
+              <Home className="h-4 w-4" />
+            </Button>
+
             {/* Warning Icon with Tooltip */}
             <TooltipProvider>
               <Tooltip>

@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { PanelLeftOpen, Folder } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { ResponsiveNavbar } from '@/components/ResponsiveNavbar';
 import { MobileWorkspace } from '@/components/MobileWorkspace';
 import { Workspace } from '@/components/Workspace';
@@ -16,6 +18,7 @@ interface ResponsiveLayoutProps {
 export function ResponsiveLayout({ onRunClick, onStopClick }: ResponsiveLayoutProps) {
   const [isMobile, setIsMobile] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [isWorkspaceCollapsed, setIsWorkspaceCollapsed] = useState(false);
   const [isConsoleMinimized, setIsConsoleMinimized] = useState(true); // Start closed
 
   // Track if any code is running to auto-expand console
@@ -74,9 +77,19 @@ export function ResponsiveLayout({ onRunClick, onStopClick }: ResponsiveLayoutPr
             isOpen={showSidebar} 
             onClose={() => setShowSidebar(false)} 
           />
+        ) : isWorkspaceCollapsed ? (
+          <div className="w-12 shrink-0 border-r flex flex-col items-center py-4 bg-sidebar">
+            <div 
+              className="p-1.5 rounded-lg bg-sidebar-accent/50 cursor-pointer hover:bg-sidebar-accent/80 transition-colors"
+              onClick={() => setIsWorkspaceCollapsed(false)}
+              title="Expand sidebar"
+            >
+              <Folder className="h-4 w-4 text-sidebar-foreground" />
+            </div>
+          </div>
         ) : (
           <div className="w-64 shrink-0">
-            <Workspace />
+            <Workspace onCollapse={() => setIsWorkspaceCollapsed(true)} />
           </div>
         )}
 

@@ -11,9 +11,9 @@ import {
   Pencil,
   MoreVertical,
   FileCode,
-  Home,
   Upload,
   FolderUp,
+  PanelLeftClose,
 } from 'lucide-react';
 import { useEditorStore } from '@/stores/useEditorStore';
 import type { EditorState } from '@/stores/useEditorStore';
@@ -197,7 +197,11 @@ function FileTreeNode({ nodeId, depth, onContextAction, selectedNodeId, onSelect
   );
 }
 
-export function Workspace() {
+interface WorkspaceProps {
+  onCollapse?: () => void;
+}
+
+export function Workspace({ onCollapse }: WorkspaceProps) {
   const location = useLocation();
   const files = useEditorStore((state: EditorState) => state.files);
   const rootIds = useEditorStore((state: EditorState) => state.rootIds);
@@ -401,31 +405,23 @@ export function Workspace() {
       <div className="h-full w-full bg-sidebar flex flex-col border-r overflow-hidden">
         {/* Header - Redesigned */}
         <div className="flex items-center justify-between px-4 py-4 border-b border-sidebar-border shrink-0">
-          <div className="flex items-center gap-2.5">
+          <div 
+            className={cn(
+              "flex items-center gap-2.5 transition-colors rounded-md p-1 -ml-1 select-none",
+              onCollapse && "cursor-pointer hover:bg-sidebar-accent/50"
+            )}
+            onClick={onCollapse}
+            title={onCollapse ? "Collapse sidebar" : undefined}
+          >
             <div className="p-1.5 rounded-lg bg-sidebar-accent/50">
               <Folder className="h-4 w-4 text-sidebar-foreground" />
             </div>
             <span className="text-sm font-semibold text-sidebar-foreground">Explorer</span>
           </div>
-          <div className="h-6 w-px bg-sidebar-border mx-2" />
-          <div className="flex items-center gap-1">
-            {location.pathname !== "/" && (
+
+          <div className="flex items-center">
+            <div className="flex items-center gap-1">
               <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 hover:bg-sidebar-accent"
-                    onClick={() => window.location.href = "/"}
-                    title="Go to home"
-                  >
-                    <Home className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Go to home</TooltipContent>
-              </Tooltip>
-            )}
-            <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
@@ -494,6 +490,7 @@ export function Workspace() {
               style={{ display: 'none' }}
               aria-label="Upload folder"
             />
+          </div>
           </div>
         </div>
 
