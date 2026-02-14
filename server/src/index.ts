@@ -16,6 +16,8 @@ import { kernelManager } from './kernelManager';
 import { getWorkerPool, shutdownWorkerPool } from './workerPool';
 import { adminMetrics } from './adminMetrics';
 import adminRoutes from './adminRoutes';
+import { startLoadTest, getTestRunner } from './testRunner';
+const { getReport } = require('../tests/utils/report-manager');
 
 // Re-read environment variables into config after dotenv load
 (config.docker as any).memory = process.env.DOCKER_MEMORY || '512m';
@@ -607,6 +609,68 @@ io.on('connection', (socket) => {
       socket.emit('kernel:shutdown_complete', { kernelId });
     } catch (error: any) {
       socket.emit('kernel:error', { kernelId, error: error.message });
+    }
+  });
+
+  // Load test runner handlers
+  socket.on('loadtest:start', async (data: { intensity: string }) => {
+    console.log('[WebSocket] Received loadtest:start event:', data);
+    try {
+      const testId = await startLoadTest(data.intensity);
+      const testRunner = getTestRunner(testId);
+      
+      if (!testRunner) {
+        console.error('[WebSocket] Failed to create test runner');
+        socket.emit('loadtest:error', { error: 'Failed to create test runner' });
+        return;
+      }
+      
+      console.log('[WebSocket] Test runner created:', testRunner.id);
+      
+      // Send initial acknowledgment
+      socket.emit('loadtest:started', { 
+        testId: testRunner.id,
+        intensity: testRunner.intensity,
+        startTime: testRunner.startTime
+      });
+      
+      // Listen for progress events
+      testRunner.on('progress', (progress) => {
+        socket.emit('loadtest:progress', {
+          testId: testRunner.id,
+          ...progress
+        });
+      });
+      
+      // Listen for completion
+      testRunner.on('complete', async (result) => {
+        // Load the report to get the summary
+        let summary = null;
+        if (result.reportId) {
+          const report = getReport(result.reportId);
+          summary = report?.summary || null;
+        }
+        
+        socket.emit('loadtest:complete', {
+          testId: testRunner.id,
+          reportId: result.reportId,
+          duration: Date.now() - testRunner.startTime,
+          summary
+        });
+      });
+      
+      // Listen for errors
+      testRunner.on('error', (error) => {
+        socket.emit('loadtest:error', {
+          testId: testRunner.id,
+          error: error.message
+        });
+      });
+      
+      // Test is already running from startLoadTest()
+      
+    } catch (error: any) {
+      socket.emit('loadtest:error', { error: error.message });
     }
   });
 

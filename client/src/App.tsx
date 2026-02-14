@@ -32,7 +32,7 @@ function EditorPage() {
   const [showSidebar, setShowSidebar] = useState(false);
 
   // Panel sizing state (desktop only)
-  const [sidebarWidth, setSidebarWidth] = useState(250);
+  const [sidebarWidth, setSidebarWidth] = useState(320);
   const [isConsoleMinimized, setIsConsoleMinimized] = useState(true); // Start closed
   
   // Resize state (desktop only)
@@ -133,7 +133,7 @@ function EditorPage() {
 
     const handleMouseMove = (e: MouseEvent) => {
       if (isResizingSidebar) {
-        const newWidth = Math.max(200, Math.min(500, e.clientX));
+        const newWidth = Math.max(300, Math.min(500, e.clientX));
         setSidebarWidth(newWidth);
       }
     };

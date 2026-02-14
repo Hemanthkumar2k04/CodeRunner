@@ -213,7 +213,9 @@ class AdminMetricsService {
       successfulRequests: metrics.successfulRequests,
       failedRequests: metrics.failedRequests,
       successRate: metrics.totalRequests > 0 
-        ? (metrics.successfulRequests / metrics.totalRequests * 100).toFixed(2) + '%'
+        ? (metrics.successfulRequests === metrics.totalRequests 
+            ? '100%' 
+            : Math.round((metrics.successfulRequests / metrics.totalRequests) * 100) + '%')
         : '0%',
       latency: {
         average: latencies.length > 0 

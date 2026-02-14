@@ -5,6 +5,25 @@ import { config } from './config';
 const execAsync = promisify(exec);
 
 /**
+ * Safe exec wrapper that handles SIGINT gracefully during cleanup
+ */
+async function safeExecAsync(command: string, options: any = {}): Promise<{ stdout: string; stderr: string }> {
+  try {
+    const result = await execAsync(command, options);
+    return {
+      stdout: result.stdout.toString(),
+      stderr: result.stderr.toString()
+    };
+  } catch (error: any) {
+    // If interrupted by SIGINT during cleanup, treat as non-fatal
+    if (error.signal === 'SIGINT' || error.code === 'SIGINT') {
+      return { stdout: '', stderr: 'Interrupted by SIGINT' };
+    }
+    throw error;
+  }
+}
+
+/**
  * Network Manager for Session-based Docker Networks
  * 
  * Manages isolated Docker networks for code execution sessions.
@@ -341,15 +360,20 @@ export async function cleanupOrphanedNetworks(maxAgeMs: number = 300000): Promis
         try {
           // Get network creation time and container count in parallel
           const [inspectOutput, containersOutput] = await Promise.all([
-            execAsync(
+            safeExecAsync(
               `docker network inspect ${networkName} --format "{{.Created}}"`,
               { timeout: config.docker.commandTimeout }
             ),
-            execAsync(
+            safeExecAsync(
               `docker network inspect ${networkName} --format "{{len .Containers}}"`,
               { timeout: config.docker.commandTimeout }
             )
           ]);
+          
+          // Skip if interrupted or empty response
+          if (!inspectOutput.stdout.trim() || !containersOutput.stdout.trim()) {
+            return;
+          }
           
           const createdAt = new Date(inspectOutput.stdout.trim()).getTime();
           const ageMs = now - createdAt;

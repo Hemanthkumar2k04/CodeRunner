@@ -2,6 +2,7 @@
 import { useCallback, useRef, useEffect } from 'react';
 import Editor, { type Monaco } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
+import { KeyCode, KeyMod } from 'monaco-editor';
 import { useTheme } from './theme-provider';
 import { useEditorStore } from '@/stores/useEditorStore';
 import type { EditorState } from '@/stores/useEditorStore';
@@ -76,13 +77,39 @@ export function CodeEditor({ onRunClick, onStopClick }: CodeEditorProps) {
     });
   }, []);
 
+  const handleSave = useCallback(() => {
+    if (activeFileId) {
+      markAsSaved(activeFileId);
+    }
+  }, [activeFileId, markAsSaved]);
+
+  const handleRunClick = useCallback(() => {
+    if (isRunning) {
+      // Stop execution if already running
+      onStopClick();
+    } else {
+      // Then run the code
+      onRunClick();
+    }
+  }, [onRunClick, onStopClick, isRunning]);
+
   const handleEditorDidMount = useCallback((editor: editor.IStandaloneCodeEditor) => {
     // Store editor reference
     editorRef.current = editor;
     
     // Apply clipboard blocking to Monaco editor
     disableMonacoClipboard(editor);
-  }, []);
+    
+    // Add Ctrl+Enter keyboard shortcut to run code
+    editor.addCommand(
+      KeyMod.CtrlCmd | KeyCode.Enter,
+      () => {
+        if (activeFile && execLanguage && !isRunning) {
+          handleRunClick();
+        }
+      }
+    );
+  }, [activeFile, execLanguage, isRunning, handleRunClick]);
 
   // Cleanup editor reference on unmount
   useEffect(() => {
@@ -110,22 +137,6 @@ export function CodeEditor({ onRunClick, onStopClick }: CodeEditorProps) {
         }
       }
     }, [activeFileId, updateContent]);
-
-  const handleSave = useCallback(() => {
-    if (activeFileId) {
-      markAsSaved(activeFileId);
-    }
-  }, [activeFileId, markAsSaved]);
-
-  const handleRunClick = useCallback(() => {
-    if (isRunning) {
-      // Stop execution if already running
-      onStopClick();
-    } else {
-      // Then run the code
-      onRunClick();
-    }
-  }, [onRunClick, onStopClick, isRunning]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
       // Only allow Ctrl+S for save and Ctrl+Enter for run

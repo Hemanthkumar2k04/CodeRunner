@@ -407,6 +407,7 @@ export function Workspace() {
             </div>
             <span className="text-sm font-semibold text-sidebar-foreground">Explorer</span>
           </div>
+          <div className="h-6 w-px bg-sidebar-border mx-2" />
           <div className="flex items-center gap-1">
             {location.pathname !== "/" && (
               <Tooltip>
