@@ -36,7 +36,7 @@ function EditorPage() {
   const [sidebarWidth, setSidebarWidth] = useState(320);
   const [isConsoleMinimized, setIsConsoleMinimized] = useState(true); // Start closed
   const [isWorkspaceCollapsed, setIsWorkspaceCollapsed] = useState(false);
-  
+
   // Resize state (desktop only)
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -62,10 +62,10 @@ function EditorPage() {
         setShowSidebar(false);
       }
     };
-    
+
     // Set initial state
     checkMobile();
-    
+
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
@@ -88,7 +88,7 @@ function EditorPage() {
 
     const activeLanguage = getLanguageFromExtension(activeFile.name);
     if (!activeLanguage || !isLanguageSupported(activeLanguage)) return;
-    
+
     // Get all files and filter to compatible ones (same language OR data files)
     const allFiles = flattenTree(files, rootIds);
     const compatibleFiles = allFiles
@@ -161,24 +161,24 @@ function EditorPage() {
 
   return (
     <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
-      <ResponsiveNavbar 
+      <ResponsiveNavbar
         onMenuClick={() => setShowSidebar(!showSidebar)}
         isMenuOpen={showSidebar}
       />
-      
+
       <main ref={containerRef} className="flex-1 flex overflow-hidden min-h-0">
         {/* Sidebar - Mobile (Hamburger) or Desktop (Fixed) */}
         {isMobile ? (
-          <MobileWorkspace 
-            isOpen={showSidebar} 
-            onClose={() => setShowSidebar(false)} 
+          <MobileWorkspace
+            isOpen={showSidebar}
+            onClose={() => setShowSidebar(false)}
           />
         ) : (
           <>
             {/* Desktop Sidebar */}
             {isWorkspaceCollapsed ? (
               <div className="w-12 shrink-0 border-r flex flex-col items-center py-4 bg-sidebar">
-                <div 
+                <div
                   className="p-1.5 rounded-lg bg-sidebar-accent/50 cursor-pointer hover:bg-sidebar-accent/80 transition-colors"
                   onClick={() => setIsWorkspaceCollapsed(false)}
                   title="Expand sidebar"
@@ -187,7 +187,7 @@ function EditorPage() {
                 </div>
               </div>
             ) : (
-              <div 
+              <div
                 className="h-full flex-shrink-0 overflow-hidden"
                 style={{ width: sidebarWidth }}
               >
@@ -200,8 +200,8 @@ function EditorPage() {
               <div
                 className={cn(
                   "group relative w-1 h-full flex-shrink-0 transition-all cursor-col-resize hover:w-1.5",
-                  isResizingSidebar 
-                    ? 'bg-primary w-1.5' 
+                  isResizingSidebar
+                    ? 'bg-primary w-1.5'
                     : 'bg-border hover:bg-primary/60'
                 )}
                 onMouseDown={() => setIsResizingSidebar(true)}
@@ -225,28 +225,28 @@ function EditorPage() {
         {/* Right side: Editor + Console */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {/* Code Editor */}
-          <div 
+          <div
             className={cn(
               "min-h-0 overflow-hidden transition-all duration-500 ease-in-out",
               isConsoleMinimized ? "flex-1" : "flex-[2_1_40%]"
             )}
           >
-            <CodeEditor 
+            <CodeEditor
               onRunClick={handleRunClick}
               onStopClick={handleStopClick}
             />
           </div>
 
           {/* Console */}
-          <div 
+          <div
             className={cn(
               "border-t overflow-hidden transition-all duration-500 ease-in-out",
-              isConsoleMinimized 
-                ? "flex-[0_0_2.5rem]" 
+              isConsoleMinimized
+                ? "flex-[0_0_2.5rem]"
                 : "flex-[3_1_60%]"
             )}
           >
-            <Console 
+            <Console
               isMinimized={isConsoleMinimized}
               onToggleMinimize={() => setIsConsoleMinimized(!isConsoleMinimized)}
             />

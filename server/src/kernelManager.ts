@@ -142,16 +142,16 @@ while True:
 class KernelManager {
   // Map: kernelId -> KernelSession
   private kernels: Map<string, KernelSession> = new Map();
-  
+
   // Map: notebookId -> kernelId (one kernel per notebook)
   private notebookKernels: Map<string, string> = new Map();
-  
+
   // Output callback for streaming results to client
   private outputCallback: ((kernelId: string, socketId: string, output: KernelOutput) => void) | null = null;
-  
+
   // Status change callback
   private statusCallback: ((kernelId: string, socketId: string, status: KernelSession['status']) => void) | null = null;
-  
+
   // Cell completion callback
   private cellCompleteCallback: ((kernelId: string, socketId: string, cellId: string) => void) | null = null;
 
@@ -229,7 +229,7 @@ class KernelManager {
 
       session.status = 'idle';
       this.emitStatus(kernelId, 'idle');
-      
+
       console.log(`[KernelManager] Kernel ${kernelId} started successfully`);
       return kernelId;
     } catch (error: any) {
@@ -279,16 +279,16 @@ class KernelManager {
     // Write the kernel script to a temp file on host, then copy to container
     const tempScriptPath = `/tmp/kernel-${session.kernelId}.py`;
     fs.writeFileSync(tempScriptPath, PYTHON_KERNEL_SCRIPT);
-    
+
     try {
       // Copy script to container
       await execAsync(`docker cp "${tempScriptPath}" ${session.containerId}:/app/kernel.py`, { timeout: config.docker.commandTimeout });
-      
+
       // Clean up temp file
       fs.unlinkSync(tempScriptPath);
     } catch (err) {
       console.error(`[KernelManager] Failed to copy kernel script:`, err);
-      try { fs.unlinkSync(tempScriptPath); } catch {}
+      try { fs.unlinkSync(tempScriptPath); } catch { }
       throw err;
     }
 
@@ -306,7 +306,7 @@ class KernelManager {
     let currentOutput = '';
     let currentCellId: string | null = null;
     let isReady = false;
-    
+
     // Promise to wait for kernel ready
     const readyPromise = new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -320,17 +320,17 @@ class KernelManager {
           resolve();
         }
       };
-      
+
       // Check stdout for ready signal
       process.stdout.once('data', (data: Buffer) => {
         checkReady(data.toString());
       });
-      
+
       process.on('error', (err) => {
         clearTimeout(timeout);
         reject(err);
       });
-      
+
       process.on('close', (code) => {
         if (!isReady) {
           clearTimeout(timeout);
@@ -342,7 +342,7 @@ class KernelManager {
     // Handle stdout
     process.stdout.on('data', (data: Buffer) => {
       const text = data.toString();
-      
+
       // Skip the ready signal in output processing
       if (text.includes('__KERNEL_READY__')) {
         const parts = text.split('__KERNEL_READY__');
@@ -533,7 +533,7 @@ class KernelManager {
     // Clean up maps
     this.kernels.delete(kernelId);
     this.notebookKernels.delete(session.notebookId);
-    
+
     console.log(`[KernelManager] Kernel ${kernelId} shut down`);
   }
 
@@ -542,7 +542,7 @@ class KernelManager {
    */
   async shutdownSocketKernels(socketId: string): Promise<void> {
     const kernelsToShutdown: string[] = [];
-    
+
     for (const [kernelId, session] of this.kernels.entries()) {
       if (session.socketId === socketId) {
         kernelsToShutdown.push(kernelId);

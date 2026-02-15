@@ -84,7 +84,7 @@ function FileTreeNode({ nodeId, depth, onContextAction, selectedNodeId, onSelect
 
   const handleClick = () => {
     onSelectNode(nodeId);
-    
+
     if (node.isFolder) {
       setIsExpanded(!isExpanded);
     } else {
@@ -116,11 +116,11 @@ function FileTreeNode({ nodeId, depth, onContextAction, selectedNodeId, onSelect
             ) : (
               <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform" />
             )}
-            <FileIcon 
-              filename={node.name} 
-              isFolder 
-              isOpen={isExpanded} 
-              className="shrink-0" 
+            <FileIcon
+              filename={node.name}
+              isFolder
+              isOpen={isExpanded}
+              className="shrink-0"
             />
           </>
         ) : (
@@ -402,7 +402,7 @@ export function Workspace({ onCollapse }: WorkspaceProps) {
       <div className="h-full w-full bg-sidebar flex flex-col border-r overflow-hidden">
         {/* Header - Redesigned */}
         <div className="flex items-center justify-between px-4 py-4 border-b border-sidebar-border shrink-0">
-          <div 
+          <div
             className={cn(
               "flex items-center gap-2.5 transition-colors rounded-md p-1 -ml-1 select-none",
               onCollapse && "cursor-pointer hover:bg-sidebar-accent/50"
@@ -419,75 +419,75 @@ export function Workspace({ onCollapse }: WorkspaceProps) {
           <div className="flex items-center">
             <div className="flex items-center gap-1">
               <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 hover:bg-sidebar-accent"
-                  onClick={() => openDialog('newFile', getParentIdForNewItem())}
-                >
-                  <FilePlus className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>New File</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 hover:bg-sidebar-accent"
-                  onClick={() => openDialog('newFolder', getParentIdForNewItem())}
-                >
-                  <FolderPlus className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>New Folder</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 hover:bg-sidebar-accent"
-                  onClick={() => document.getElementById('file-upload-input')?.click()}
-                >
-                  <Upload className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Upload Files</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 hover:bg-sidebar-accent"
-                  onClick={() => document.getElementById('folder-upload-input')?.click()}
-                >
-                  <FolderUp className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Upload Folder</TooltipContent>
-            </Tooltip>
-            <input
-              id="file-upload-input"
-              type="file"
-              multiple
-              accept="*/*"
-              onChange={handleFileUpload}
-              style={{ display: 'none' }}
-              aria-label="Upload files"
-            />
-            <input
-              id="folder-upload-input"
-              type="file"
-              {...({ webkitdirectory: '', directory: '' } as any)}
-              onChange={handleFolderUpload}
-              style={{ display: 'none' }}
-              aria-label="Upload folder"
-            />
-          </div>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 hover:bg-sidebar-accent"
+                    onClick={() => openDialog('newFile', getParentIdForNewItem())}
+                  >
+                    <FilePlus className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>New File</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 hover:bg-sidebar-accent"
+                    onClick={() => openDialog('newFolder', getParentIdForNewItem())}
+                  >
+                    <FolderPlus className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>New Folder</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 hover:bg-sidebar-accent"
+                    onClick={() => document.getElementById('file-upload-input')?.click()}
+                  >
+                    <Upload className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Upload Files</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 hover:bg-sidebar-accent"
+                    onClick={() => document.getElementById('folder-upload-input')?.click()}
+                  >
+                    <FolderUp className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Upload Folder</TooltipContent>
+              </Tooltip>
+              <input
+                id="file-upload-input"
+                type="file"
+                multiple
+                accept="*/*"
+                onChange={handleFileUpload}
+                style={{ display: 'none' }}
+                aria-label="Upload files"
+              />
+              <input
+                id="folder-upload-input"
+                type="file"
+                {...({ webkitdirectory: '', directory: '' } as any)}
+                onChange={handleFolderUpload}
+                style={{ display: 'none' }}
+                aria-label="Upload folder"
+              />
+            </div>
           </div>
         </div>
 

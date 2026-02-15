@@ -56,16 +56,16 @@ export interface EditorState {
   // File system
   files: Record<string, FileNode>;
   rootIds: string[]; // Top-level file/folder IDs
-  
+
   // Editor state
   activeFileId: string | null;
   openTabs: string[];
-  
+
   // Execution state
   consoles: Record<string, ConsoleState>; // fileId -> console state
   activeConsoleId: string | null;
   selectedFilesForRun: string[];
-  
+
   // Actions - File management
   addFile: (name: string, parentId: string | null) => { success: boolean; error?: string; id?: string };
   addFolder: (name: string, parentId: string | null) => { success: boolean; error?: string; id?: string };
@@ -73,17 +73,17 @@ export interface EditorState {
   deleteNode: (id: string) => void;
   renameNode: (id: string, newName: string) => { success: boolean; error?: string };
   uploadFiles: (files: File[], parentId: string | null) => Promise<{ success: boolean; error?: string; uploadedCount?: number }>;
-  
+
   // Actions - Editor
   setActiveFile: (id: string | null) => void;
   openTab: (id: string) => void;
   closeTab: (id: string) => void;
   markAsSaved: (id: string) => void;
-  
+
   // Actions - Execution
   toggleFileForRun: (id: string) => void;
   setSelectedFilesForRun: (ids: string[]) => void;
-  
+
   // Console management
   createConsole: (fileId: string, filePath: string, sessionId: string) => void;
   deleteConsole: (fileId: string) => void;
@@ -93,7 +93,7 @@ export interface EditorState {
   setConsoleRunning: (fileId: string, running: boolean) => void;
   setConsoleExecutionTime: (fileId: string, time: number) => void;
   getConsoleByFileId: (fileId: string) => ConsoleState | undefined;
-  
+
   // Utilities
   getFileById: (id: string) => FileNode | undefined;
   getAllFiles: () => FileNode[];
@@ -135,10 +135,10 @@ export const useEditorStore = create<EditorState>()(
         }
 
         const state = get();
-        const siblings = parentId 
+        const siblings = parentId
           ? state.files[parentId]?.children || []
           : state.rootIds;
-        
+
         // Check for duplicate names
         const isDuplicate = siblings.some(id => state.files[id]?.name === name);
         if (isDuplicate) {
@@ -163,7 +163,7 @@ export const useEditorStore = create<EditorState>()(
         set(state => {
           const newFiles = { ...state.files, [id]: newFile };
           const newRootIds = parentId ? state.rootIds : [...state.rootIds, id];
-          
+
           // Update parent's children if exists
           if (parentId && state.files[parentId]) {
             newFiles[parentId] = {
@@ -173,8 +173,8 @@ export const useEditorStore = create<EditorState>()(
           }
 
           // Auto-open the new file in editor
-          return { 
-            files: newFiles, 
+          return {
+            files: newFiles,
             rootIds: newRootIds,
             activeFileId: id,
             openTabs: state.openTabs.includes(id) ? state.openTabs : [...state.openTabs, id],
@@ -190,10 +190,10 @@ export const useEditorStore = create<EditorState>()(
         }
 
         const state = get();
-        const siblings = parentId 
+        const siblings = parentId
           ? state.files[parentId]?.children || []
           : state.rootIds;
-        
+
         // Check for duplicate names
         const isDuplicate = siblings.some(id => state.files[id]?.name === name);
         if (isDuplicate) {
@@ -218,7 +218,7 @@ export const useEditorStore = create<EditorState>()(
         set(state => {
           const newFiles = { ...state.files, [id]: newFolder };
           const newRootIds = parentId ? state.rootIds : [...state.rootIds, id];
-          
+
           // Update parent's children if exists
           if (parentId && state.files[parentId]) {
             newFiles[parentId] = {
@@ -248,7 +248,7 @@ export const useEditorStore = create<EditorState>()(
         // Calculate new total size
         const currentSize = getFileSize(currentFile.content);
         const totalSize = state.getTotalSize() - currentSize + fileSize;
-        
+
         if (totalSize > MAX_TOTAL_SIZE) {
           return { success: false, error: `Total workspace size exceeds limit of ${MAX_TOTAL_SIZE / (1024 * 1024)}MB` };
         }
@@ -301,10 +301,10 @@ export const useEditorStore = create<EditorState>()(
 
           // Clean up tabs and active file
           const newOpenTabs = state.openTabs.filter(tabId => !idsToDelete.includes(tabId));
-          const newActiveFileId = idsToDelete.includes(state.activeFileId || '') 
+          const newActiveFileId = idsToDelete.includes(state.activeFileId || '')
             ? (newOpenTabs[0] || null)
             : state.activeFileId;
-          
+
           // Clean up selected files for run
           const newSelectedFiles = state.selectedFilesForRun.filter(
             fId => !idsToDelete.includes(fId)
@@ -313,7 +313,7 @@ export const useEditorStore = create<EditorState>()(
           // Clean up consoles for deleted files
           const newConsoles = { ...state.consoles };
           idsToDelete.forEach(delId => delete newConsoles[delId]);
-          
+
           // Update active console if it was deleted
           const newActiveConsoleId = idsToDelete.includes(state.activeConsoleId || '')
             ? (Object.keys(newConsoles)[0] || null)
@@ -343,10 +343,10 @@ export const useEditorStore = create<EditorState>()(
         }
 
         // Check for duplicate names among siblings
-        const siblings = node.parentId 
+        const siblings = node.parentId
           ? state.files[node.parentId]?.children || []
           : state.rootIds;
-        
+
         const isDuplicate = siblings.some(
           sibId => sibId !== id && state.files[sibId]?.name === newName
         );
@@ -358,18 +358,18 @@ export const useEditorStore = create<EditorState>()(
         const updatePaths = (nodeId: string, basePath: string): Record<string, FileNode> => {
           const n = state.files[nodeId];
           if (!n) return {};
-          
+
           const newPath = basePath ? `${basePath}/${n.name}` : n.name;
           let updates: Record<string, FileNode> = {
             [nodeId]: { ...n, path: newPath },
           };
-          
+
           if (n.isFolder) {
             n.children.forEach(childId => {
               updates = { ...updates, ...updatePaths(childId, newPath) };
             });
           }
-          
+
           return updates;
         };
 
@@ -417,12 +417,12 @@ export const useEditorStore = create<EditorState>()(
         set(state => {
           const newTabs = state.openTabs.filter(tabId => tabId !== id);
           let newActiveId = state.activeFileId;
-          
+
           if (state.activeFileId === id) {
             const closedIndex = state.openTabs.indexOf(id);
             newActiveId = newTabs[Math.min(closedIndex, newTabs.length - 1)] || null;
           }
-          
+
           return {
             openTabs: newTabs,
             activeFileId: newActiveId,
@@ -483,12 +483,12 @@ export const useEditorStore = create<EditorState>()(
         set(state => {
           const newConsoles = { ...state.consoles };
           delete newConsoles[fileId];
-          
+
           // If deleted console was active, switch to first available or null
           const newActiveId = state.activeConsoleId === fileId
             ? Object.keys(newConsoles)[0] || null
             : state.activeConsoleId;
-          
+
           return {
             consoles: newConsoles,
             activeConsoleId: newActiveId,
@@ -504,7 +504,7 @@ export const useEditorStore = create<EditorState>()(
         set(state => {
           const console = state.consoles[fileId];
           if (!console) return state;
-          
+
           return {
             consoles: {
               ...state.consoles,
@@ -521,14 +521,14 @@ export const useEditorStore = create<EditorState>()(
         set(state => {
           const console = state.consoles[fileId];
           if (!console) return state;
-          
+
           let newOutput = [...console.output, { ...entry, timestamp: Date.now() }];
           // Maintain max output entries per console to prevent memory bloat
           // When buffer exceeds limit, discard oldest entries (keep only most recent)
           if (newOutput.length > MAX_OUTPUT_ENTRIES_PER_CONSOLE) {
             newOutput = newOutput.slice(-MAX_OUTPUT_ENTRIES_PER_CONSOLE);
           }
-          
+
           return {
             consoles: {
               ...state.consoles,
@@ -545,7 +545,7 @@ export const useEditorStore = create<EditorState>()(
         set(state => {
           const console = state.consoles[fileId];
           if (!console) return state;
-          
+
           return {
             consoles: {
               ...state.consoles,
@@ -562,7 +562,7 @@ export const useEditorStore = create<EditorState>()(
         set(state => {
           const console = state.consoles[fileId];
           if (!console) return state;
-          
+
           return {
             consoles: {
               ...state.consoles,
@@ -600,7 +600,7 @@ export const useEditorStore = create<EditorState>()(
       getFilesForExecution: () => {
         const state = get();
         const activeFile = state.activeFileId ? state.files[state.activeFileId] : null;
-        
+
         return state.selectedFilesForRun
           .map(id => state.files[id])
           .filter((f): f is FileNode => f !== undefined && !f.isFolder)
@@ -613,7 +613,7 @@ export const useEditorStore = create<EditorState>()(
 
       uploadFiles: async (files: File[], parentId: string | null) => {
         console.log('[uploadFiles] Starting upload:', { fileCount: files.length, parentId });
-        
+
         if (!files || files.length === 0) {
           return { success: false, error: 'No files selected' };
         }
@@ -626,21 +626,21 @@ export const useEditorStore = create<EditorState>()(
           console.log('[uploadFiles] Reading files...');
           for (const file of files) {
             console.log('[uploadFiles] Reading file:', { name: file.name, type: file.type, size: file.size });
-            
+
             // Check file size before reading
             if (file.size > MAX_FILE_SIZE) {
               return { success: false, error: `File "${file.name}" exceeds size limit of ${MAX_FILE_SIZE / 1024}KB` };
             }
-            
+
             // Determine if file is binary based on type or extension
-            const isBinary = file.type.startsWith('image/') || 
-                           file.type.startsWith('audio/') || 
-                           file.type.startsWith('video/') ||
-                           file.type === 'application/octet-stream' ||
-                           /\.(png|jpg|jpeg|gif|bmp|ico|pdf|zip|tar|gz|exe|dll|so|dylib)$/i.test(file.name);
-            
+            const isBinary = file.type.startsWith('image/') ||
+              file.type.startsWith('audio/') ||
+              file.type.startsWith('video/') ||
+              file.type === 'application/octet-stream' ||
+              /\.(png|jpg|jpeg|gif|bmp|ico|pdf|zip|tar|gz|exe|dll|so|dylib)$/i.test(file.name);
+
             let content: string;
-            
+
             if (isBinary) {
               // Read binary files as data URL (base64)
               content = await new Promise<string>((resolve, reject) => {
@@ -663,7 +663,7 @@ export const useEditorStore = create<EditorState>()(
             console.log('[uploadFiles] File read:', { name: file.name, size, isBinary, contentLength: content.length });
 
             totalNewSize += size;
-            
+
             // Use webkitRelativePath if available (from folder upload), otherwise just the name
             const filePath = (file as any).webkitRelativePath || file.name;
             fileDataList.push({ path: filePath, content, size, isBinary });
@@ -672,11 +672,11 @@ export const useEditorStore = create<EditorState>()(
           // Check total size
           const currentTotalSize = get().getTotalSize();
           console.log('[uploadFiles] Size check:', { currentTotalSize, totalNewSize, max: MAX_TOTAL_SIZE });
-          
+
           if (currentTotalSize + totalNewSize > MAX_TOTAL_SIZE) {
-            return { 
-              success: false, 
-              error: `Upload would exceed workspace size limit of ${MAX_TOTAL_SIZE / (1024 * 1024)}MB` 
+            return {
+              success: false,
+              error: `Upload would exceed workspace size limit of ${MAX_TOTAL_SIZE / (1024 * 1024)}MB`
             };
           }
         } catch (error: any) {
@@ -693,24 +693,24 @@ export const useEditorStore = create<EditorState>()(
           for (const fileData of fileDataList) {
             const pathParts = fileData.path.split('/');
             const fileName = pathParts[pathParts.length - 1];
-            
+
             console.log('[uploadFiles] Processing:', { path: fileData.path, fileName, pathParts });
-            
+
             // Handle folder structure
             let currentParentId = parentId;
             if (pathParts.length > 1) {
               const folderPaths = pathParts.slice(0, -1);
               let currentPath = '';
-              
+
               for (const folderName of folderPaths) {
                 currentPath = currentPath ? `${currentPath}/${folderName}` : folderName;
-                
+
                 if (!folderMap.has(currentPath)) {
                   // Create folder
                   const currentState = get();
                   const result = currentState.addFolder(folderName, currentParentId);
                   console.log('[uploadFiles] Create folder result:', { folderName, result });
-                  
+
                   if (result.success && result.id) {
                     folderMap.set(currentPath, result.id);
                     currentParentId = result.id;
@@ -744,13 +744,13 @@ export const useEditorStore = create<EditorState>()(
             const currentState = get();
             const fileResult = currentState.addFile(fileName, currentParentId);
             console.log('[uploadFiles] Create file result:', { fileName, result: fileResult });
-            
+
             if (fileResult.success && fileResult.id) {
               // Update file with both content and binary flag in one operation
               set(state => {
                 const file = state.files[fileResult.id!];
                 if (!file) return state;
-                
+
                 return {
                   files: {
                     ...state.files,
@@ -762,15 +762,15 @@ export const useEditorStore = create<EditorState>()(
                   }
                 };
               });
-              
-              console.log('[uploadFiles] File updated:', { 
-                fileName, 
+
+              console.log('[uploadFiles] File updated:', {
+                fileName,
                 fileId: fileResult.id,
                 isBinary: fileData.isBinary,
                 contentLength: fileData.content.length,
                 contentPreview: fileData.content.substring(0, 50)
               });
-              
+
               uploadedCount++;
             } else if (!fileResult.success) {
               console.warn(`Failed to create file "${fileName}": ${fileResult.error}`);

@@ -63,16 +63,16 @@ class AdminMetricsService {
   private activeExecutions: Set<string> = new Set();
   private serverSnapshots: ServerSnapshot[] = [];
   private maxSnapshots: number = 1440; // Keep 24 hours of minute-by-minute snapshots
-  
+
   // System monitoring
   private systemMetrics: SystemMetrics = {
     cpu: 0,
-    memory: { 
-      total: 0, 
-      free: 0, 
-      used: 0, 
-      usagePercentage: 0, 
-      process: { rss: 0, heapTotal: 0, heapUsed: 0 } 
+    memory: {
+      total: 0,
+      free: 0,
+      used: 0,
+      usagePercentage: 0,
+      process: { rss: 0, heapTotal: 0, heapUsed: 0 }
     },
     uptime: 0,
     load: [],
@@ -83,7 +83,7 @@ class AdminMetricsService {
     // Initialize today's metrics
     this.initializeDailyMetrics(this.getTodayDate());
     this.startSystemMonitor();
-    
+
     // Clean up old metrics every 24 hours
     setInterval(() => this.cleanupOldMetrics(), 24 * 60 * 60 * 1000);
   }
@@ -91,10 +91,10 @@ class AdminMetricsService {
   private startSystemMonitor() {
     // Initial CPU reading
     this.updateSystemMetrics();
-    
+
     // Update every 2 seconds
     setInterval(() => {
-        this.updateSystemMetrics();
+      this.updateSystemMetrics();
     }, 2000);
   }
 
@@ -105,21 +105,21 @@ class AdminMetricsService {
     let totalTick = 0;
 
     for (const cpu of cpus) {
-        for (const type in cpu.times) {
-            totalTick += (cpu.times as any)[type];
-        }
-        totalIdle += cpu.times.idle;
+      for (const type in cpu.times) {
+        totalTick += (cpu.times as any)[type];
+      }
+      totalIdle += cpu.times.idle;
     }
 
     const idle = totalIdle / cpus.length;
     const total = totalTick / cpus.length;
 
     if (this.lastCpuUsage.total > 0) {
-        const idleDiff = idle - this.lastCpuUsage.idle;
-        const totalDiff = total - this.lastCpuUsage.total;
-        // avoid division by zero
-        const percentage = totalDiff > 0 ? 100 - (100 * idleDiff / totalDiff) : 0;
-        this.systemMetrics.cpu = Math.max(0, Math.min(100, parseFloat(percentage.toFixed(1))));
+      const idleDiff = idle - this.lastCpuUsage.idle;
+      const totalDiff = total - this.lastCpuUsage.total;
+      // avoid division by zero
+      const percentage = totalDiff > 0 ? 100 - (100 * idleDiff / totalDiff) : 0;
+      this.systemMetrics.cpu = Math.max(0, Math.min(100, parseFloat(percentage.toFixed(1))));
     }
 
     this.lastCpuUsage = { idle, total };
@@ -198,25 +198,25 @@ class AdminMetricsService {
     // Update daily metrics
     const date = this.getTodayDate();
     const metrics = this.initializeDailyMetrics(date);
-    
+
     metrics.totalRequests++;
     if (request.success) {
       metrics.successfulRequests++;
     } else {
       metrics.failedRequests++;
     }
-    
+
     metrics.requestLatencies.push(request.executionTime);
     // Cap latencies array to prevent unbounded memory growth
     if (metrics.requestLatencies.length > this.maxLatenciesPerDay) {
       metrics.requestLatencies.shift();
     }
     metrics.uniqueClients.add(request.clientId);
-    
+
     // Update language stats
     const langCount = metrics.requestsByLanguage.get(request.language) || 0;
     metrics.requestsByLanguage.set(request.language, langCount + 1);
-    
+
     // Update type stats
     const typeCount = metrics.requestsByType.get(request.type) || 0;
     metrics.requestsByType.set(request.type, typeCount + 1);
@@ -306,7 +306,7 @@ class AdminMetricsService {
   private formatDailyMetrics(metrics: DailyMetrics): any {
     const latencies = metrics.requestLatencies;
     const sortedLatencies = [...latencies].sort((a, b) => a - b);
-    
+
     return {
       date: metrics.date,
       uniqueContainers: metrics.uniqueContainers.size,
@@ -314,18 +314,18 @@ class AdminMetricsService {
       totalRequests: metrics.totalRequests,
       successfulRequests: metrics.successfulRequests,
       failedRequests: metrics.failedRequests,
-      successRate: metrics.totalRequests > 0 
-        ? (metrics.successfulRequests === metrics.totalRequests 
-            ? '100%' 
-            : Math.round((metrics.successfulRequests / metrics.totalRequests) * 100) + '%')
+      successRate: metrics.totalRequests > 0
+        ? (metrics.successfulRequests === metrics.totalRequests
+          ? '100%'
+          : Math.round((metrics.successfulRequests / metrics.totalRequests) * 100) + '%')
         : '0%',
       latency: {
-        average: latencies.length > 0 
+        average: latencies.length > 0
           ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length)
           : 0,
         lowest: sortedLatencies.length > 0 ? sortedLatencies[0] : 0,
         highest: sortedLatencies.length > 0 ? sortedLatencies[sortedLatencies.length - 1] : 0,
-        median: sortedLatencies.length > 0 
+        median: sortedLatencies.length > 0
           ? sortedLatencies[Math.floor(sortedLatencies.length / 2)]
           : 0,
         p95: sortedLatencies.length > 0
@@ -373,15 +373,15 @@ class AdminMetricsService {
    */
   getRequestHistory(startDate?: Date, endDate?: Date, limit: number = 100): RequestMetrics[] {
     let filtered = this.requestHistory;
-    
+
     if (startDate) {
       filtered = filtered.filter(r => r.timestamp >= startDate);
     }
-    
+
     if (endDate) {
       filtered = filtered.filter(r => r.timestamp <= endDate);
     }
-    
+
     return filtered.slice(-limit);
   }
 
@@ -395,10 +395,10 @@ class AdminMetricsService {
     }
 
     const formatted = this.formatDailyMetrics(metrics);
-    
+
     // CSV Header
     let csv = 'Metric,Value\n';
-    
+
     // Basic metrics
     csv += `Date,${formatted.date}\n`;
     csv += `Unique Containers,${formatted.uniqueContainers}\n`;
@@ -408,7 +408,7 @@ class AdminMetricsService {
     csv += `Failed Requests,${formatted.failedRequests}\n`;
     csv += `Success Rate,${formatted.successRate}\n`;
     csv += '\n';
-    
+
     // Latency metrics
     csv += `Average Latency (ms),${formatted.latency.average}\n`;
     csv += `Lowest Latency (ms),${formatted.latency.lowest}\n`;
@@ -417,20 +417,20 @@ class AdminMetricsService {
     csv += `95th Percentile Latency (ms),${formatted.latency.p95}\n`;
     csv += `99th Percentile Latency (ms),${formatted.latency.p99}\n`;
     csv += '\n';
-    
+
     // Requests by language
     csv += 'Language,Request Count\n';
     for (const [lang, count] of Object.entries(formatted.requestsByLanguage)) {
       csv += `${lang},${count}\n`;
     }
     csv += '\n';
-    
+
     // Requests by type
     csv += 'Request Type,Count\n';
     for (const [type, count] of Object.entries(formatted.requestsByType)) {
       csv += `${type},${count}\n`;
     }
-    
+
     return csv;
   }
 
@@ -441,7 +441,7 @@ class AdminMetricsService {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const cutoffDate = thirtyDaysAgo.toISOString().split('T')[0];
-    
+
     for (const date of this.dailyMetrics.keys()) {
       if (date < cutoffDate) {
         this.dailyMetrics.delete(date);
@@ -456,7 +456,7 @@ class AdminMetricsService {
   getSummaryStats(): any {
     const todayMetrics = this.getTodayMetrics();
     const allMetrics = this.getAllDailyMetrics();
-    
+
     return {
       today: todayMetrics,
       totalDaysTracked: allMetrics.length,
@@ -475,10 +475,10 @@ class AdminMetricsService {
     this.activeClients.clear();
     this.activeExecutions.clear();
     this.serverSnapshots = [];
-    
+
     // Re-initialize today's metrics
     this.initializeDailyMetrics(this.getTodayDate());
-    
+
     console.log('[AdminMetrics] All metrics have been reset');
   }
 }

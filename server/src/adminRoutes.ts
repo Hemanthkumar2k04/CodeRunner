@@ -31,11 +31,11 @@ if (ADMIN_KEY === 'dev-admin-key-change-in-production') {
  */
 function adminAuth(req: Request, res: Response, next: NextFunction) {
   const key = req.headers['x-admin-key'];
-  
+
   if (key !== ADMIN_KEY) {
     return res.status(401).json({ error: 'Unauthorized: Invalid admin key' });
   }
-  
+
   next();
 }
 
@@ -56,14 +56,14 @@ router.get('/stats', adminAuth, async (req: Request, res: Response) => {
     const networkStats = await getNetworkStats();
     const networkMetrics = getNetworkMetrics();
     const subnetStats = getSubnetStats();
-    
+
     // Get execution queue stats - import at runtime to avoid circular dependency
     let queueStats = {
       queued: 0,
       active: 0,
       maxConcurrent: config.sessionContainers.maxConcurrentSessions,
     };
-    
+
     try {
       const indexModule = await import('./index');
       if (indexModule.executionQueue) {
@@ -131,18 +131,18 @@ router.get('/metrics/today', adminAuth, (req: Request, res: Response) => {
 router.get('/metrics/:date', adminAuth, (req: Request, res: Response) => {
   try {
     const { date } = req.params;
-    
+
     // Validate date format
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' });
     }
-    
+
     const metrics = adminMetrics.getDailyMetrics(date);
-    
+
     if (!metrics) {
       return res.status(404).json({ error: `No metrics available for ${date}` });
     }
-    
+
     res.json(metrics);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -168,18 +168,18 @@ router.get('/metrics/all', adminAuth, (req: Request, res: Response) => {
 router.get('/report/download', adminAuth, (req: Request, res: Response) => {
   try {
     const date = (req.query.date as string) || new Date().toISOString().split('T')[0];
-    
+
     // Validate date format
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' });
     }
-    
+
     const csv = adminMetrics.generateDailyReport(date);
-    
+
     if (csv === 'No data available for this date') {
       return res.status(404).json({ error: `No data available for ${date}` });
     }
-    
+
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="coderunner-report-${date}.csv"`);
     res.send(csv);
@@ -196,15 +196,15 @@ router.post('/reset', adminAuth, async (req: Request, res: Response) => {
     adminMetrics.resetAllMetrics();
     sessionPool.resetMetrics();
     resetNetworkMetrics();
-    
-    res.json({ 
+
+    res.json({
       success: true,
       message: 'All metrics have been reset successfully'
     });
   } catch (error: any) {
     console.error('[Admin] Error resetting metrics:', error);
-    res.status(500).json({ 
-      error: `Failed to reset metrics: ${error.message}` 
+    res.status(500).json({
+      error: `Failed to reset metrics: ${error.message}`
     });
   }
 });
@@ -230,7 +230,7 @@ router.get('/history', adminAuth, (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 100;
     const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
     const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
-    
+
     const history = adminMetrics.getRequestHistory(startDate, endDate, limit);
     res.json(history);
   } catch (error: any) {
@@ -244,16 +244,16 @@ router.get('/history', adminAuth, (req: Request, res: Response) => {
 router.post('/run-load-test', adminAuth, async (req: Request, res: Response) => {
   try {
     const intensity = (req.query.intensity as string) || 'moderate';
-    
+
     if (!['light', 'moderate', 'heavy'].includes(intensity)) {
       return res.status(400).json({ error: 'Invalid intensity. Must be: light, moderate, or heavy' });
     }
-    
+
     // Dynamic import to avoid circular dependencies
     const { startLoadTest } = await import('./testRunner');
     const testId = await startLoadTest(intensity);
-    
-    res.json({ 
+
+    res.json({
       testId,
       intensity,
       status: 'started',
@@ -284,11 +284,11 @@ router.get('/load-test-reports/:id', adminAuth, (req: Request, res: Response) =>
   try {
     const { getReport } = require('../tests/utils/report-manager');
     const report = getReport(req.params.id);
-    
+
     if (!report) {
       return res.status(404).json({ error: 'Report not found' });
     }
-    
+
     res.json(report);
   } catch (error: any) {
     res.status(500).json({ error: `Failed to get report: ${error.message}` });
@@ -302,11 +302,11 @@ router.delete('/load-test-reports/:id', adminAuth, (req: Request, res: Response)
   try {
     const { deleteReport } = require('../tests/utils/report-manager');
     const success = deleteReport(req.params.id);
-    
+
     if (!success) {
       return res.status(404).json({ error: 'Report not found' });
     }
-    
+
     res.json({ message: 'Report deleted successfully' });
   } catch (error: any) {
     res.status(500).json({ error: `Failed to delete report: ${error.message}` });

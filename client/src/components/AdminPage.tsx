@@ -119,12 +119,12 @@ const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b', '#ef4444'
 
 export function AdminPage() {
   const navigate = useNavigate();
-  
+
   const [adminKey, setAdminKey] = useState<string>('');
   const [keyInput, setKeyInput] = useState<string>('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  
+
   const [stats, setStats] = useState<ServerStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -132,7 +132,7 @@ export function AdminPage() {
   const [showTestModal, setShowTestModal] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [resourceHistory, setResourceHistory] = useState<{ time: string; cpu: number; memory: number }[]>([]);
-  
+
   const abortControllerRef = useRef<AbortController | null>(null);
   const hasLoadedOnceRef = useRef(false);
   const isFetchingRef = useRef(false);
@@ -140,7 +140,7 @@ export function AdminPage() {
   const fetchStats = useCallback(async () => {
     console.log('[AdminPage] fetchStats called, adminKey:', adminKey ? 'present' : 'missing', 'isFetching:', isFetchingRef.current);
     if (!adminKey) return;
-    
+
     // If already fetching, don't start a new request (prevents React Strict Mode double-mount issues)
     if (isFetchingRef.current) {
       console.log('[AdminPage] Already fetching, skipping...');
@@ -159,7 +159,7 @@ export function AdminPage() {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    
+
     abortControllerRef.current = new AbortController();
 
     try {
@@ -184,7 +184,7 @@ export function AdminPage() {
       const data = await response.json();
       console.log('[AdminPage] Stats received, setting state');
       setStats(data);
-      
+
       if (data.server.resources) {
         setResourceHistory(prev => {
           const now = new Date();
@@ -259,7 +259,7 @@ export function AdminPage() {
       if (!response.ok) {
         throw new Error(response.status === 401 ? 'Invalid admin key' : 'Authentication failed');
       }
-      
+
       // Key is valid, save and authenticate
       setAdminKey(keyInput);
       setIsAuthenticated(true);
@@ -297,11 +297,11 @@ export function AdminPage() {
         method: 'POST',
         headers: { 'X-Admin-Key': adminKey },
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to reset metrics');
       }
-      
+
       // Refresh stats after reset
       await fetchStats();
     } catch (err: any) {
@@ -311,7 +311,7 @@ export function AdminPage() {
 
   const handleDownloadReport = async () => {
     if (!adminKey) return;
-    
+
     const date = new Date().toISOString().split('T')[0];
     try {
       const response = await fetch(`/admin/report/download?date=${date}`, {
@@ -522,7 +522,7 @@ export function AdminPage() {
             <FileText className="h-4 w-4 mr-2" />
             Logs
           </Button>
-           <Button
+          <Button
             variant={activeTab === 'settings' ? 'secondary' : 'ghost'}
             className="w-full justify-start"
             onClick={() => setActiveTab('settings')}
@@ -532,21 +532,21 @@ export function AdminPage() {
           </Button>
         </nav>
         <div className="p-4 border-t space-y-2">
-           <div className="bg-muted/50 rounded-lg p-3">
-             <div className="flex items-center gap-2 mb-2">
-               <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                 <Lock className="h-4 w-4 text-primary" />
-               </div>
-               <div className="flex-1 overflow-hidden">
-                 <p className="text-sm font-medium truncate">Admin User</p>
-                 <p className="text-xs text-muted-foreground truncate">Connected via Key</p>
-               </div>
-             </div>
-             <Button variant="ghost" size="sm" className="w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10" onClick={handleLogout}>
-                <LogOut className="h-4 w-4 mr-2" />
-                Logout
-             </Button>
-           </div>
+          <div className="bg-muted/50 rounded-lg p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                <Lock className="h-4 w-4 text-primary" />
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <p className="text-sm font-medium truncate">Admin User</p>
+                <p className="text-xs text-muted-foreground truncate">Connected via Key</p>
+              </div>
+            </div>
+            <Button variant="ghost" size="sm" className="w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10" onClick={handleLogout}>
+              <LogOut className="h-4 w-4 mr-2" />
+              Logout
+            </Button>
+          </div>
         </div>
       </aside>
 
@@ -555,267 +555,267 @@ export function AdminPage() {
         <div className="border-b bg-card/30 backdrop-blur sticky top-0 z-10">
           <div className="px-6 py-4 flex items-center justify-between">
             <div className="flex items-center gap-4">
-               <div className="md:hidden">
-                 {/* Mobile menu trigger could go here */}
-                 <Button variant="ghost" size="icon"><LayoutDashboard className="h-5 w-5"/></Button>
-               </div>
-               <div className="flex items-center gap-2">
-                  <div className={`h-2.5 w-2.5 rounded-full ${stats ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
-                  <span className="text-sm font-medium">Live Status: {stats ? 'Connected' : 'Disconnected'}</span>
-               </div>
+              <div className="md:hidden">
+                {/* Mobile menu trigger could go here */}
+                <Button variant="ghost" size="icon"><LayoutDashboard className="h-5 w-5" /></Button>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className={`h-2.5 w-2.5 rounded-full ${stats ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+                <span className="text-sm font-medium">Live Status: {stats ? 'Connected' : 'Disconnected'}</span>
+              </div>
             </div>
-            
+
             <div className="flex items-center gap-2">
-               <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
-                  <RefreshCw className={`h-3.5 w-3.5 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-                  Refresh
-               </Button>
-               <Button variant="outline" size="sm" onClick={() => setShowTestModal(true)}>
-                  <Zap className="h-3.5 w-3.5 mr-2" />
-                  Run Load Test
-               </Button>
-               <Button variant="outline" size="sm" onClick={handleReset}>
-                  <RotateCcw className="h-3.5 w-3.5 mr-2" />
-                  Reset Metrics
-               </Button>
-               <Button variant="outline" size="sm" onClick={handleDownloadReport}>
-                  <Download className="h-3.5 w-3.5 mr-2" />
-                  Download Report
-               </Button>
+              <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
+                <RefreshCw className={`h-3.5 w-3.5 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setShowTestModal(true)}>
+                <Zap className="h-3.5 w-3.5 mr-2" />
+                Run Load Test
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleReset}>
+                <RotateCcw className="h-3.5 w-3.5 mr-2" />
+                Reset Metrics
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleDownloadReport}>
+                <Download className="h-3.5 w-3.5 mr-2" />
+                Download Report
+              </Button>
             </div>
           </div>
         </div>
 
         <div className="p-6 space-y-6">
           {activeTab === 'overview' && (
-             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                {/* Top Statistics Cards */}
-                <div className="grid gap-4 md:grid-cols-3">
-                  <Card className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-all">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                       <CardTitle className="text-sm font-medium">Concurrent Executions</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                       <div className="text-3xl font-bold">{stats.executionQueue.active}</div>
-                       <div className="flex items-center justify-between mt-1">
-                          <p className="text-xs text-muted-foreground">{stats.executionQueue.queued} queued / {stats.executionQueue.maxConcurrent || 10} max</p>
-                       </div>
-                       <Progress value={(stats.executionQueue.active / (stats.executionQueue.maxConcurrent || 10)) * 100} className="h-1.5 mt-3" />
-                    </CardContent>
-                  </Card>
-                   
-                  <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-all">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                       <CardTitle className="text-sm font-medium">Active Containers</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                       <div className="text-3xl font-bold">{stats.containers.active}</div>
-                       <p className="text-xs text-muted-foreground mt-1">
-                         {stats.containers.reused} reused / {stats.containers.created} created
-                       </p>
-                       {/* Mini visualization of container pool */}
-                       <div className="flex gap-0.5 mt-3 h-1.5 overflow-hidden rounded-full bg-secondary">
-                          <div className="bg-blue-500 h-full transition-all duration-500" style={{ width: `${Math.min((stats.containers.active / 20) * 100, 100)}%` }} />
-                       </div>
-                    </CardContent>
-                  </Card>
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              {/* Top Statistics Cards */}
+              <div className="grid gap-4 md:grid-cols-3">
+                <Card className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-all">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Concurrent Executions</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">{stats.executionQueue.active}</div>
+                    <div className="flex items-center justify-between mt-1">
+                      <p className="text-xs text-muted-foreground">{stats.executionQueue.queued} queued / {stats.executionQueue.maxConcurrent || 10} max</p>
+                    </div>
+                    <Progress value={(stats.executionQueue.active / (stats.executionQueue.maxConcurrent || 10)) * 100} className="h-1.5 mt-3" />
+                  </CardContent>
+                </Card>
 
-                  <Card className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-all">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                       <CardTitle className="text-sm font-medium">Active Clients</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                       <div className="text-3xl font-bold">{stats.clients.activeClients}</div>
-                       <p className="text-xs text-muted-foreground mt-1">
-                         {stats.clients.activeExecutions} executing code
-                       </p>
-                        <div className="mt-3 flex items-center gap-2">
-                          <div className="flex -space-x-2">
-                            {Array.from({length: Math.min(stats.clients.activeClients, 3)}).map((_, i) => (
-                               <div key={i} className="w-6 h-6 rounded-full bg-primary/20 border-2 border-background flex items-center justify-center text-[10px] font-bold">
-                                 {i+1}
-                               </div>
-                            ))}
+                <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-all">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Active Containers</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">{stats.containers.active}</div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {stats.containers.reused} reused / {stats.containers.created} created
+                    </p>
+                    {/* Mini visualization of container pool */}
+                    <div className="flex gap-0.5 mt-3 h-1.5 overflow-hidden rounded-full bg-secondary">
+                      <div className="bg-blue-500 h-full transition-all duration-500" style={{ width: `${Math.min((stats.containers.active / 20) * 100, 100)}%` }} />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-all">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Active Clients</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">{stats.clients.activeClients}</div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {stats.clients.activeExecutions} executing code
+                    </p>
+                    <div className="mt-3 flex items-center gap-2">
+                      <div className="flex -space-x-2">
+                        {Array.from({ length: Math.min(stats.clients.activeClients, 3) }).map((_, i) => (
+                          <div key={i} className="w-6 h-6 rounded-full bg-primary/20 border-2 border-background flex items-center justify-center text-[10px] font-bold">
+                            {i + 1}
                           </div>
-                          {stats.clients.activeClients > 3 && <span className="text-xs text-muted-foreground">+{stats.clients.activeClients - 3} more</span>}
-                        </div>
-                    </CardContent>
-                  </Card>
-                </div>
+                        ))}
+                      </div>
+                      {stats.clients.activeClients > 3 && <span className="text-xs text-muted-foreground">+{stats.clients.activeClients - 3} more</span>}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
 
-                {/* Main Charts Row */}
-                <div className="grid gap-6 md:grid-cols-3">
-                   {/* Latency Distribution - Spans 2 cols */}
-                   <Card className="md:col-span-2 shadow-sm">
-                      <CardHeader>
-                         <div className="flex items-center justify-between">
-                            <div>
-                               <CardTitle>Latency Distribution</CardTitle>
-                               <CardDescription>Response time percentiles (ms)</CardDescription>
-                            </div>
-                            <div className="flex gap-4 text-xs font-mono text-muted-foreground bg-secondary/30 p-2 rounded-md">
-                               <span>Avg: {stats.metrics.today.latency.average}</span>
-                               <span>P95: {stats.metrics.today.latency.p95}</span>
-                               <span>P99: {stats.metrics.today.latency.p99}</span>
-                               <span className="text-destructive">Max: {stats.metrics.today.latency.highest}</span>
-                            </div>
-                         </div>
-                      </CardHeader>
-                      <CardContent>
-                         <ResponsiveContainer width="100%" height={240}>
-                           <BarChart data={latencyData} layout="vertical" margin={{ left: 40, right: 20, top: 10, bottom: 10 }}>
-                             <CartesianGrid strokeDasharray="3 3" horizontal={false} className="stroke-muted/20" />
-                             <XAxis type="number" className="text-xs font-mono" />
-                             <YAxis dataKey="name" type="category" className="text-xs font-medium" width={30} />
-                             <Tooltip 
-                               contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '8px', border: '1px solid hsl(var(--border))' }}
-                               formatter={(value: any) => [`${value}ms`, 'Latency']}
-                             />
-                             <Bar dataKey="value" fill="url(#colorLatency)" radius={[0, 4, 4, 0]} barSize={32}>
-                               {latencyData.map((_, index) => (
-                                 <Cell key={`cell-${index}`} fill={['#3b82f6', '#8b5cf6', '#ec4899', '#ef4444'][index] || '#3b82f6'} />
-                               ))}
-                             </Bar>
-                           </BarChart>
-                         </ResponsiveContainer>
-                      </CardContent>
-                   </Card>
+              {/* Main Charts Row */}
+              <div className="grid gap-6 md:grid-cols-3">
+                {/* Latency Distribution - Spans 2 cols */}
+                <Card className="md:col-span-2 shadow-sm">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>Latency Distribution</CardTitle>
+                        <CardDescription>Response time percentiles (ms)</CardDescription>
+                      </div>
+                      <div className="flex gap-4 text-xs font-mono text-muted-foreground bg-secondary/30 p-2 rounded-md">
+                        <span>Avg: {stats.metrics.today.latency.average}</span>
+                        <span>P95: {stats.metrics.today.latency.p95}</span>
+                        <span>P99: {stats.metrics.today.latency.p99}</span>
+                        <span className="text-destructive">Max: {stats.metrics.today.latency.highest}</span>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={240}>
+                      <BarChart data={latencyData} layout="vertical" margin={{ left: 40, right: 20, top: 10, bottom: 10 }}>
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} className="stroke-muted/20" />
+                        <XAxis type="number" className="text-xs font-mono" />
+                        <YAxis dataKey="name" type="category" className="text-xs font-medium" width={30} />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '8px', border: '1px solid hsl(var(--border))' }}
+                          formatter={(value: any) => [`${value}ms`, 'Latency']}
+                        />
+                        <Bar dataKey="value" fill="url(#colorLatency)" radius={[0, 4, 4, 0]} barSize={32}>
+                          {latencyData.map((_, index) => (
+                            <Cell key={`cell-${index}`} fill={['#3b82f6', '#8b5cf6', '#ec4899', '#ef4444'][index] || '#3b82f6'} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
 
-                   {/* Requests by Language */}
-                   <Card className="shadow-sm">
-                      <CardHeader>
-                        <CardTitle>Requests by Language</CardTitle>
-                        <CardDescription>Execution distribution</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                         <div className="h-[240px] relative">
-                           <ResponsiveContainer width="100%" height="100%">
-                             <PieChart>
-                               <Pie
-                                 data={languageData}
-                                 cx="50%"
-                                 cy="50%"
-                                 innerRadius={60}
-                                 outerRadius={80}
-                                 paddingAngle={5}
-                                 dataKey="value"
-                               >
-                                 {languageData.map((_, index) => (
-                                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                 ))}
-                               </Pie>
-                               <Tooltip 
-                                  contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '8px', border: '1px solid hsl(var(--border))' }}
-                               />
-                             </PieChart>
-                           </ResponsiveContainer>
-                           {/* Center Text */}
-                           <div className="absolute inset-0 flex items-center justify-center flex-col pointer-events-none">
-                              <span className="text-2xl font-bold">{stats.metrics.today.totalRequests}</span>
-                              <span className="text-xs text-muted-foreground uppercase">Requests</span>
-                           </div>
-                         </div>
-                         {/* Legend */}
-                         <div className="flex flex-wrap gap-2 justify-center mt-4">
-                            {languageData.map((entry, index) => (
-                               <div key={index} className="flex items-center gap-1.5 text-xs">
-                                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
-                                  <span className="font-medium text-muted-foreground">{entry.name}</span>
-                                  <span className="font-bold">{((entry.value / stats.metrics.today.totalRequests) * 100).toFixed(1)}%</span>
-                               </div>
+                {/* Requests by Language */}
+                <Card className="shadow-sm">
+                  <CardHeader>
+                    <CardTitle>Requests by Language</CardTitle>
+                    <CardDescription>Execution distribution</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-[240px] relative">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={languageData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={60}
+                            outerRadius={80}
+                            paddingAngle={5}
+                            dataKey="value"
+                          >
+                            {languageData.map((_, index) => (
+                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                             ))}
-                         </div>
-                      </CardContent>
-                   </Card>
-                </div>
-
-                {/* Resource Usage Charts */}
-                <div className="grid gap-6 md:grid-cols-2">
-                   <Card className="shadow-sm">
-                      <CardHeader>
-                        <CardTitle>CPU Usage</CardTitle>
-                        <CardDescription>Server processor utilization over time</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="h-[200px]">
-                           <ResponsiveContainer width="100%" height="100%">
-                             <AreaChart data={resourceHistory}>
-                               <defs>
-                                 <linearGradient id="colorCpu" x1="0" y1="0" x2="0" y2="1">
-                                   <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                                   <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                                 </linearGradient>
-                               </defs>
-                               <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-muted/20" />
-                               <XAxis dataKey="time" hide />
-                               <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} className="text-xs font-mono" width={35} />
-                               <Tooltip 
-                                  contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '8px', border: '1px solid hsl(var(--border))' }}
-                                  formatter={(value: any) => [`${value}%`, 'CPU Load']}
-                                  labelFormatter={(label) => `Time: ${label}`}
-                               />
-                               <Area type="monotone" dataKey="cpu" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorCpu)" isAnimationActive={false} />
-                             </AreaChart>
-                           </ResponsiveContainer>
+                          </Pie>
+                          <Tooltip
+                            contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '8px', border: '1px solid hsl(var(--border))' }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      {/* Center Text */}
+                      <div className="absolute inset-0 flex items-center justify-center flex-col pointer-events-none">
+                        <span className="text-2xl font-bold">{stats.metrics.today.totalRequests}</span>
+                        <span className="text-xs text-muted-foreground uppercase">Requests</span>
+                      </div>
+                    </div>
+                    {/* Legend */}
+                    <div className="flex flex-wrap gap-2 justify-center mt-4">
+                      {languageData.map((entry, index) => (
+                        <div key={index} className="flex items-center gap-1.5 text-xs">
+                          <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
+                          <span className="font-medium text-muted-foreground">{entry.name}</span>
+                          <span className="font-bold">{((entry.value / stats.metrics.today.totalRequests) * 100).toFixed(1)}%</span>
                         </div>
-                      </CardContent>
-                   </Card>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
 
-                   <Card className="shadow-sm">
-                      <CardHeader>
-                        <CardTitle>Memory Usage</CardTitle>
-                        <CardDescription>Server RAM utilization over time</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="h-[200px]">
-                           <ResponsiveContainer width="100%" height="100%">
-                             <AreaChart data={resourceHistory}>
-                               <defs>
-                                 <linearGradient id="colorMem" x1="0" y1="0" x2="0" y2="1">
-                                   <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3}/>
-                                   <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
-                                 </linearGradient>
-                               </defs>
-                               <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-muted/20" />
-                               <XAxis dataKey="time" hide />
-                               <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} className="text-xs font-mono" width={35} />
-                               <Tooltip 
-                                  contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '8px', border: '1px solid hsl(var(--border))' }}
-                                  formatter={(value: any) => [`${value}%`, 'Memory Usage']}
-                                  labelFormatter={(label) => `Time: ${label}`}
-                               />
-                               <Area type="monotone" dataKey="memory" stroke="#8b5cf6" strokeWidth={2} fillOpacity={1} fill="url(#colorMem)" isAnimationActive={false} />
-                             </AreaChart>
-                           </ResponsiveContainer>
-                        </div>
-                      </CardContent>
-                   </Card>
-                </div>
-             </div>
+              {/* Resource Usage Charts */}
+              <div className="grid gap-6 md:grid-cols-2">
+                <Card className="shadow-sm">
+                  <CardHeader>
+                    <CardTitle>CPU Usage</CardTitle>
+                    <CardDescription>Server processor utilization over time</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-[200px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={resourceHistory}>
+                          <defs>
+                            <linearGradient id="colorCpu" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                              <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-muted/20" />
+                          <XAxis dataKey="time" hide />
+                          <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} className="text-xs font-mono" width={35} />
+                          <Tooltip
+                            contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '8px', border: '1px solid hsl(var(--border))' }}
+                            formatter={(value: any) => [`${value}%`, 'CPU Load']}
+                            labelFormatter={(label) => `Time: ${label}`}
+                          />
+                          <Area type="monotone" dataKey="cpu" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorCpu)" isAnimationActive={false} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="shadow-sm">
+                  <CardHeader>
+                    <CardTitle>Memory Usage</CardTitle>
+                    <CardDescription>Server RAM utilization over time</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-[200px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={resourceHistory}>
+                          <defs>
+                            <linearGradient id="colorMem" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
+                              <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-muted/20" />
+                          <XAxis dataKey="time" hide />
+                          <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} className="text-xs font-mono" width={35} />
+                          <Tooltip
+                            contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '8px', border: '1px solid hsl(var(--border))' }}
+                            formatter={(value: any) => [`${value}%`, 'Memory Usage']}
+                            labelFormatter={(label) => `Time: ${label}`}
+                          />
+                          <Area type="monotone" dataKey="memory" stroke="#8b5cf6" strokeWidth={2} fillOpacity={1} fill="url(#colorMem)" isAnimationActive={false} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
           )}
 
           {activeTab === 'metrics' && (
-             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 animate-in fade-in duration-500">
-                {/* Reusing existing metric cards logic but adapting layout */}
-                <Card>
-                   <CardHeader><CardTitle className="text-lg">Total Requests</CardTitle></CardHeader>
-                   <CardContent><div className="text-3xl font-bold">{stats.metrics.today.totalRequests}</div></CardContent>
-                </Card>
-                <Card>
-                   <CardHeader><CardTitle className="text-lg">Success Rate</CardTitle></CardHeader>
-                   <CardContent><div className="text-3xl font-bold text-green-500">{stats.metrics.today.successRate}</div></CardContent>
-                </Card>
-                 <Card>
-                   <CardHeader><CardTitle className="text-lg">Avg Latency</CardTitle></CardHeader>
-                   <CardContent><div className="text-3xl font-bold">{stats.metrics.today.latency.average}ms</div></CardContent>
-                </Card>
-                 <Card>
-                   <CardHeader><CardTitle className="text-lg">Unique Containers</CardTitle></CardHeader>
-                   <CardContent><div className="text-3xl font-bold">{stats.metrics.today.uniqueContainers}</div></CardContent>
-                </Card>
-             </div>
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 animate-in fade-in duration-500">
+              {/* Reusing existing metric cards logic but adapting layout */}
+              <Card>
+                <CardHeader><CardTitle className="text-lg">Total Requests</CardTitle></CardHeader>
+                <CardContent><div className="text-3xl font-bold">{stats.metrics.today.totalRequests}</div></CardContent>
+              </Card>
+              <Card>
+                <CardHeader><CardTitle className="text-lg">Success Rate</CardTitle></CardHeader>
+                <CardContent><div className="text-3xl font-bold text-green-500">{stats.metrics.today.successRate}</div></CardContent>
+              </Card>
+              <Card>
+                <CardHeader><CardTitle className="text-lg">Avg Latency</CardTitle></CardHeader>
+                <CardContent><div className="text-3xl font-bold">{stats.metrics.today.latency.average}ms</div></CardContent>
+              </Card>
+              <Card>
+                <CardHeader><CardTitle className="text-lg">Unique Containers</CardTitle></CardHeader>
+                <CardContent><div className="text-3xl font-bold">{stats.metrics.today.uniqueContainers}</div></CardContent>
+              </Card>
+            </div>
           )}
-          
+
           {/* Placeholders for other tabs */}
           {activeTab === 'containers' && <div className="p-10 text-center text-muted-foreground">Detailed container management coming soon...</div>}
           {activeTab === 'logs' && <div className="p-10 text-center text-muted-foreground">Log viewer coming soon...</div>}

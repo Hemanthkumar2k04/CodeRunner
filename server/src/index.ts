@@ -146,7 +146,7 @@ function shellEscape(arg: string): string {
 }
 
 function getRunCommand(language: string, entryFile: string): string {
-  switch(language) {
+  switch (language) {
     case 'python': return `python -u ${shellEscape(entryFile)}`; // -u for unbuffered output
     case 'javascript': return `node ${shellEscape(entryFile)}`;
     case 'cpp': {
@@ -217,8 +217,8 @@ class ExecutionQueue {
     while (lo < hi) {
       const mid = (lo + hi) >>> 1;
       const cmp = this.queue[mid];
-      if (cmp.priority > queuedTask.priority || 
-          (cmp.priority === queuedTask.priority && cmp.timestamp <= queuedTask.timestamp)) {
+      if (cmp.priority > queuedTask.priority ||
+        (cmp.priority === queuedTask.priority && cmp.timestamp <= queuedTask.timestamp)) {
         lo = mid + 1;
       } else {
         hi = mid;
@@ -296,7 +296,7 @@ class ExecutionQueue {
   getDetailedStats() {
     const stats = this.getStats();
     const queuedByLanguage: { [key: string]: number } = {};
-    
+
     this.queue.forEach(qt => {
       if (qt.language) {
         queuedByLanguage[qt.language] = (queuedByLanguage[qt.language] || 0) + 1;
@@ -306,8 +306,8 @@ class ExecutionQueue {
     return {
       ...stats,
       queuedByLanguage,
-      queueUtilization: this.maxConcurrent > 0 
-        ? Math.round((this.activeCount / this.maxConcurrent) * 100) 
+      queueUtilization: this.maxConcurrent > 0
+        ? Math.round((this.activeCount / this.maxConcurrent) * 100)
         : 0,
     };
   }
@@ -343,17 +343,17 @@ kernelManager.onCellComplete((kernelId, socketId, cellId) => {
 // --- WebSocket Handling ---
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
-  
+
   // Track client connection
   adminMetrics.trackClientConnected(socket.id);
-  
+
   let currentProcess: any = null;
   let tempDir: string | null = null;
   let containerId: string | null = null;
   let currentLanguage: string | null = null;
   let currentSessionId: string | null = null;
   let manuallyStopped: boolean = false;
-  
+
   // Output buffering - batch chunks to reduce socket traffic and memory overhead
   // Instead of emitting every stdout/stderr chunk immediately, we buffer them and
   // emit in batches every 100ms. This reduces:
@@ -363,7 +363,7 @@ io.on('connection', (socket) => {
   // - Server console logging (only critical logs kept after refactoring)
   let outputBuffer: { sessionId: string; type: 'stdout' | 'stderr'; data: string }[] = [];
   let flushBufferTimer: NodeJS.Timeout | null = null;
-  
+
   const flushOutputBuffer = () => {
     if (outputBuffer.length > 0) {
       // Combine consecutive same-type chunks to further reduce overhead
@@ -382,7 +382,7 @@ io.on('connection', (socket) => {
     }
     flushBufferTimer = null;
   };
-  
+
   const scheduleFlush = () => {
     if (!flushBufferTimer) {
       flushBufferTimer = setTimeout(flushOutputBuffer, 100); // Flush every 100ms
@@ -391,7 +391,7 @@ io.on('connection', (socket) => {
 
   socket.on('run', async (data: { sessionId: string; language: string, files: File[] }) => {
     const { sessionId, language, files } = data;
-    
+
     // Enqueue the execution task with configurable concurrency
     // Priority: WebSocket interactive requests get priority 2 (higher than API)
     executionQueue.enqueue(async () => {
@@ -400,7 +400,7 @@ io.on('connection', (socket) => {
       manuallyStopped = false; // Reset flag for new execution
       const startTime = Date.now(); // Track execution start time
       const executionId = `ws-${sessionId}-${startTime}`;
-      
+
       // Track execution start
       adminMetrics.trackExecutionStarted(executionId);
 
@@ -416,17 +416,17 @@ io.on('connection', (socket) => {
       if (!runtimeConfig) {
         socket.emit('output', { sessionId, type: 'stderr', data: `Error: Unsupported language '${language}'\n` });
         socket.emit('exit', { sessionId, code: 1 });
-        return;   
+        return;
       }
 
       // Find entry file
       const entryFile = files.find(f => f.toBeExec);
       if (!entryFile && language !== 'cpp' && language !== 'sql') {
-         socket.emit('output', { sessionId, type: 'stderr', data: 'Error: No entry file marked for execution.\n' });
-         socket.emit('exit', { sessionId, code: 1 });
-         return;
+        socket.emit('output', { sessionId, type: 'stderr', data: 'Error: No entry file marked for execution.\n' });
+        socket.emit('exit', { sessionId, code: 1 });
+        return;
       }
-      
+
       // For SQL, use the first .sql file if no file is marked
       let execFile = entryFile;
       if (!execFile && language === 'sql') {
@@ -440,18 +440,18 @@ io.on('connection', (socket) => {
 
       let command = '';
       try {
-          command = getRunCommand(language, execFile ? execFile.path : '');
+        command = getRunCommand(language, execFile ? execFile.path : '');
       } catch (e: any) {
-          socket.emit('output', { sessionId, type: 'stderr', data: e.message + '\n' });
-          socket.emit('exit', { sessionId, code: 1 });
-          return;
+        socket.emit('output', { sessionId, type: 'stderr', data: e.message + '\n' });
+        socket.emit('exit', { sessionId, code: 1 });
+        return;
       }
 
       // 1. Get or create session container (always with networking)
       // Retry logic: if network/container creation fails, cleanup and try with new network
       const maxRetries = 2;
       let lastError: any = null;
-      
+
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
           console.log(`[Execution] Creating container for session ${socket.id.substring(0, 8)}, language ${language} (attempt ${attempt}/${maxRetries})`);
@@ -463,19 +463,19 @@ io.on('connection', (socket) => {
         } catch (e: any) {
           lastError = e;
           console.error(`[Execution] Failed to acquire container (attempt ${attempt}/${maxRetries}):`, e.message);
-          
+
           // Clean up the failed network before retrying
           await deleteSessionNetwork(socket.id).catch(cleanupErr =>
             console.error(`[Execution] Failed to cleanup network after error:`, cleanupErr)
           );
-          
+
           // If this was the last attempt, fail
           if (attempt === maxRetries) {
             socket.emit('output', { sessionId, type: 'stderr', data: `System Error: Failed to acquire container after ${maxRetries} attempts - ${e.message}\n` });
             socket.emit('exit', { sessionId, code: 1 });
             return;
           }
-          
+
           // Wait a bit before retrying to avoid hammering Docker
           await new Promise(resolve => setTimeout(resolve, 500));
         }
@@ -494,7 +494,7 @@ io.on('connection', (socket) => {
       // 2. Write files (filter for C/C++ to avoid conflicts)
       try {
         fs.mkdirSync(tempDir, { recursive: true });
-        
+
         // For C/C++, filter files based on entry file extension to avoid conflicts
         let filesToWrite = files;
         if (language === 'cpp' && execFile) {
@@ -513,7 +513,7 @@ io.on('connection', (socket) => {
             });
           }
         }
-        
+
         for (const file of filesToWrite) {
           const filePath = path.join(tempDir, file.path);
           fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -529,7 +529,7 @@ io.on('connection', (socket) => {
       // 3. Copy files
       const cpCommand = `docker cp "${tempDir}/." ${containerId}:/app/`;
       console.log(`[Execution] Copying files to container ${containerId.substring(0, 12)}`);
-      
+
       await new Promise<void>((resolve, reject) => {
         exec(cpCommand, { timeout: config.docker.commandTimeout }, (cpError) => {
           if (cpError) {
@@ -546,7 +546,7 @@ io.on('connection', (socket) => {
           // Use -i for interactive (keeps stdin open)
           const dockerArgs = [
             'exec',
-            '-i', 
+            '-i',
             '-w', '/app',
             containerId!,
             '/bin/sh', '-c', command
@@ -574,10 +574,10 @@ io.on('connection', (socket) => {
               clearTimeout(flushBufferTimer);
               flushOutputBuffer();
             }
-            
+
             // Calculate execution time
             const executionTime = Date.now() - startTime;
-            
+
             // Track execution completion
             adminMetrics.trackExecutionEnded(executionId);
             adminMetrics.trackRequest({
@@ -588,7 +588,7 @@ io.on('connection', (socket) => {
               sessionId,
               clientId: socket.id,
             });
-            
+
             // Only emit exit if not manually stopped (manual stop already emitted exit)
             if (!manuallyStopped) {
               socket.emit('exit', { sessionId, code, executionTime });
@@ -626,7 +626,7 @@ io.on('connection', (socket) => {
   });
 
   // --- Notebook Kernel Events ---
-  
+
   socket.on('kernel:start', async (data: { notebookId: string; language?: string }) => {
     const { notebookId, language = 'python' } = data;
     try {
@@ -683,22 +683,22 @@ io.on('connection', (socket) => {
     try {
       const testId = await startLoadTest(data.intensity);
       const testRunner = getTestRunner(testId);
-      
+
       if (!testRunner) {
         console.error('[WebSocket] Failed to create test runner');
         socket.emit('loadtest:error', { error: 'Failed to create test runner' });
         return;
       }
-      
+
       console.log('[WebSocket] Test runner created:', testRunner.id);
-      
+
       // Send initial acknowledgment
-      socket.emit('loadtest:started', { 
+      socket.emit('loadtest:started', {
         testId: testRunner.id,
         intensity: testRunner.intensity,
         startTime: testRunner.startTime
       });
-      
+
       // Listen for progress events
       testRunner.on('progress', (progress) => {
         socket.emit('loadtest:progress', {
@@ -706,7 +706,7 @@ io.on('connection', (socket) => {
           ...progress
         });
       });
-      
+
       // Listen for completion
       testRunner.on('complete', async (result) => {
         // Load the report to get the summary
@@ -715,7 +715,7 @@ io.on('connection', (socket) => {
           const report = getReport(result.reportId);
           summary = report?.summary || null;
         }
-        
+
         socket.emit('loadtest:complete', {
           testId: testRunner.id,
           reportId: result.reportId,
@@ -723,7 +723,7 @@ io.on('connection', (socket) => {
           summary
         });
       });
-      
+
       // Listen for errors
       testRunner.on('error', (error) => {
         socket.emit('loadtest:error', {
@@ -731,9 +731,9 @@ io.on('connection', (socket) => {
           error: error.message
         });
       });
-      
+
       // Test is already running from startLoadTest()
-      
+
     } catch (error: any) {
       socket.emit('loadtest:error', { error: error.message });
     }
@@ -742,7 +742,7 @@ io.on('connection', (socket) => {
   socket.on('disconnect', async () => {
     // Track client disconnection
     adminMetrics.trackClientDisconnected(socket.id);
-    
+
     if (flushBufferTimer) {
       clearTimeout(flushBufferTimer);
     }
@@ -750,15 +750,15 @@ io.on('connection', (socket) => {
       currentProcess.kill();
     }
     await cleanup().catch(e => console.error('[Cleanup] Error:', e));
-    
+
     // Clean up all session containers for this socket
     await sessionPool.cleanupSession(socket.id);
-    
+
     // Clean up all kernels for this socket
     await kernelManager.shutdownSocketKernels(socket.id);
-    
+
     // Clean up session network
-    await deleteSessionNetwork(socket.id).catch(err => 
+    await deleteSessionNetwork(socket.id).catch(err =>
       console.error(`[Disconnect] Failed to cleanup session network:`, err)
     );
   });
@@ -784,8 +784,8 @@ io.on('connection', (socket) => {
 // --- API Endpoints ---
 
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     version: '1.0.0',
     environment: config.server.env,
     timestamp: new Date().toISOString()
@@ -820,15 +820,15 @@ app.post('/api/run', async (req, res) => {
   const sessionId = `api-${Date.now()}-${Math.random().toString(36).substring(7)}`;
   const clientId = req.ip || req.socket.remoteAddress || 'unknown';
   const executionId = `api-${sessionId}`;
-  
+
   // Track execution start
   adminMetrics.trackExecutionStarted(executionId);
-  
+
   try {
     // Check queue capacity before accepting request
     const queueStats = executionQueue.getStats();
     if (queueStats.queued >= queueStats.maxQueueSize) {
-      res.status(503).json({ 
+      res.status(503).json({
         error: `Server overloaded: ${queueStats.queued} requests queued (max: ${queueStats.maxQueueSize})`,
         queueStats,
       });
@@ -848,7 +848,7 @@ app.post('/api/run', async (req, res) => {
     });
 
     const executionTime = Date.now() - startTime;
-    
+
     // Track execution completion
     adminMetrics.trackExecutionEnded(executionId);
     adminMetrics.trackRequest({
@@ -859,14 +859,14 @@ app.post('/api/run', async (req, res) => {
       sessionId,
       clientId,
     });
-    
+
     res.json({
       ...result,
       executionTime
     });
   } catch (error: any) {
     const executionTime = Date.now() - startTime;
-    
+
     // Track failed execution
     adminMetrics.trackExecutionEnded(executionId);
     adminMetrics.trackRequest({
@@ -877,8 +877,8 @@ app.post('/api/run', async (req, res) => {
       sessionId,
       clientId,
     });
-    
-    res.status(500).json({ 
+
+    res.status(500).json({
       error: `Execution failed: ${error.message}`,
       executionTime
     });
@@ -931,7 +931,7 @@ async function executeWithSessionContainer(
     // Retry logic for network/container acquisition
     const maxRetries = 2;
     let networkCreated = false;
-    
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         // Always use session container with networking
@@ -941,7 +941,7 @@ async function executeWithSessionContainer(
         break; // Success - exit retry loop
       } catch (error: any) {
         console.error(`[API] Failed to acquire container (attempt ${attempt}/${maxRetries}):`, error.message);
-        
+
         // Clean up network if it was created
         if (networkCreated) {
           await deleteSessionNetwork(sessionId).catch(cleanupErr =>
@@ -949,12 +949,12 @@ async function executeWithSessionContainer(
           );
           networkCreated = false;
         }
-        
+
         // If this was the last attempt, give up
         if (attempt === maxRetries) {
           return resolve({ stdout: '', stderr: `System Error: Failed to acquire container after ${maxRetries} attempts - ${error.message}`, exitCode: 1 });
         }
-        
+
         // Wait before retrying
         await new Promise(r => setTimeout(r, 500));
       }
@@ -966,7 +966,7 @@ async function executeWithSessionContainer(
 
       // Write files (filter for C/C++ to avoid conflicts)
       fs.mkdirSync(tempDir, { recursive: true });
-      
+
       // For C/C++, filter files based on entry file extension to avoid conflicts
       let filesToWrite = files;
       if (language === 'cpp' && execFile) {
@@ -985,7 +985,7 @@ async function executeWithSessionContainer(
           });
         }
       }
-      
+
       for (const file of filesToWrite) {
         const filePath = path.join(tempDir, file.path);
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -1026,12 +1026,12 @@ async function executeWithSessionContainer(
           fs.rmSync(tempDir, { recursive: true, force: true });
         } catch (e) { /* ignore */ }
       }
-      
+
       // Clean up network if it was created but execution failed
       await deleteSessionNetwork(sessionId).catch(cleanupErr =>
         console.error(`[API] Failed to cleanup network after error:`, cleanupErr)
       );
-      
+
       resolve({ stdout: '', stderr: `System Error: ${error.message}`, exitCode: 1 });
     }
   });
@@ -1051,7 +1051,7 @@ if (require.main === module) {
   // Pre-flight checks
   async function preflightChecks(): Promise<void> {
     console.log('[Preflight] Running Docker environment checks...');
-    
+
     try {
       // Check if Docker daemon is running
       await execAsync('docker version', { timeout: 5000 });
@@ -1086,14 +1086,14 @@ if (require.main === module) {
 
   // Session pool uses on-demand containers - no initialization needed
   console.log('[Server] Starting with session-based container pool (on-demand + TTL)');
-  
+
   preflightChecks().then(async () => {
     // Clean up any orphaned networks from previous runs on startup
     console.log('[Server] Cleaning up orphaned networks from previous runs...');
     await cleanupOrphanedNetworks(0).catch(err =>
       console.error('[Startup] Failed to cleanup orphaned networks:', err)
     );
-    
+
     const server = httpServer.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`Server running on http://localhost:${PORT}`);
       console.log(`Network access: http://<your-ip-address>:${PORT}`);
@@ -1107,18 +1107,18 @@ if (require.main === module) {
     // Adaptive cleanup intervals based on load
     let containerCleanupInterval = config.sessionContainers.cleanupInterval; // Default 30s
     let networkCleanupInterval = 120000; // Default 2 minutes
-    
+
     // Container cleanup - runs asynchronously without blocking
     const performContainerCleanup = async () => {
       // Run cleanup in background without blocking
       setImmediate(async () => {
         try {
           await sessionPool.cleanupExpiredContainers();
-          
+
           // Adapt cleanup interval based on metrics
           const metrics = sessionPool.getMetrics();
           const sessionCount = sessionPool.getSessionCount();
-          
+
           // If we're under load (many sessions or errors), clean up more frequently
           if (sessionCount > 50 || metrics.cleanupErrors > 5) {
             containerCleanupInterval = Math.max(15000, containerCleanupInterval * 0.8); // Speed up, min 15s
@@ -1139,7 +1139,7 @@ if (require.main === module) {
         try {
           const networkMetrics = getNetworkMetrics();
           const stats = await getNetworkStats().catch(() => ({ empty: 0, total: 0, withContainers: 0 }));
-          
+
           // Use aggressive bulk cleanup for very high orphan counts (>100)
           // This is based on the cleanup.sh script approach
           if (stats.empty > 100) {
@@ -1157,12 +1157,12 @@ if (require.main === module) {
               maxAge = 30000; // Aggressive: 30 seconds
               console.warn(`[Cleanup] Aggressive network cleanup (${stats.empty} orphaned networks)`);
             }
-            
-            await cleanupOrphanedNetworks(maxAge).catch(err => 
+
+            await cleanupOrphanedNetworks(maxAge).catch(err =>
               console.error('[Cleanup Job] Orphaned networks cleanup failed:', err)
             );
           }
-          
+
           // Adapt network cleanup interval based on metrics
           if (stats.empty > 20 || networkMetrics.cleanupErrors > 5) {
             networkCleanupInterval = Math.max(30000, networkCleanupInterval * 0.7); // Speed up, min 30s
@@ -1184,7 +1184,7 @@ if (require.main === module) {
     const snapshotInterval = setInterval(() => {
       const poolMetrics = sessionPool.getMetrics();
       const queueStats = executionQueue.getStats();
-      
+
       adminMetrics.takeSnapshot(
         0, // No worker threads used
         poolMetrics.totalActiveContainers,
@@ -1198,7 +1198,7 @@ if (require.main === module) {
         const stats = await getNetworkStats();
         const poolMetrics = sessionPool.getMetrics();
         const networkMetrics = getNetworkMetrics();
-        
+
         console.log(`[Network Stats] Total: ${stats.total}, Active: ${stats.withContainers}, Unused: ${stats.empty}`);
         console.log(`[Container Stats] Created: ${poolMetrics.containersCreated}, Reused: ${poolMetrics.containersReused}, Deleted: ${poolMetrics.containersDeleted}, Errors: ${poolMetrics.cleanupErrors}`);
         console.log(`[Network Metrics] Created: ${networkMetrics.networksCreated}, Deleted: ${networkMetrics.networksDeleted}, Escalation: ${networkMetrics.escalationLevel}, Errors: ${networkMetrics.cleanupErrors}`);
@@ -1214,47 +1214,47 @@ if (require.main === module) {
         console.log('\nForce shutdown - exiting immediately');
         process.exit(1);
       }
-      
+
       isShuttingDown = true;
       console.log('\nShutting down server...');
-      
+
       // Set a hard timeout - exit after 5 seconds no matter what
       const shutdownTimeout = setTimeout(() => {
         console.log('[Shutdown] Timeout reached - forcing exit');
         process.exit(0);
       }, 5000);
-      
+
       try {
         // Clear timers
         clearInterval(ttlCleanupTimer);
         clearInterval(networkCleanupTimer);
         clearInterval(networkStatsInterval);
         clearInterval(snapshotInterval);
-        
+
         // Cleanup with timeout
         await Promise.race([
           sessionPool.cleanupAll(),
           new Promise(resolve => setTimeout(resolve, 3000))
         ]);
-        
+
         await Promise.race([
           cleanupOrphanedNetworks(0),
           new Promise(resolve => setTimeout(resolve, 2000))
         ]);
-        
+
         server.close(() => {
           clearTimeout(shutdownTimeout);
           console.log('Server closed.');
           process.exit(0);
         });
-        
+
         // If server.close doesn't fire callback, force exit after 1s
         setTimeout(() => {
           clearTimeout(shutdownTimeout);
           console.log('[Shutdown] Server close timeout - exiting');
           process.exit(0);
         }, 1000);
-        
+
       } catch (error) {
         console.error('[Shutdown] Error during cleanup:', error);
         clearTimeout(shutdownTimeout);

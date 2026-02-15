@@ -41,10 +41,10 @@ export function ResponsiveLayout({ onRunClick, onStopClick }: ResponsiveLayoutPr
         setShowSidebar(false);
       }
     };
-    
+
     // Set initial state
     checkMobile();
-    
+
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
@@ -63,7 +63,7 @@ export function ResponsiveLayout({ onRunClick, onStopClick }: ResponsiveLayoutPr
   return (
     <div className="h-full w-full flex flex-col overflow-hidden">
       {/* Navbar */}
-      <ResponsiveNavbar 
+      <ResponsiveNavbar
         onMenuClick={() => setShowSidebar(!showSidebar)}
         isMenuOpen={showSidebar}
       />
@@ -72,13 +72,13 @@ export function ResponsiveLayout({ onRunClick, onStopClick }: ResponsiveLayoutPr
       <div className="flex-1 min-h-0 flex overflow-hidden">
         {/* Sidebar - Mobile (Hamburger) or Desktop (Always visible) */}
         {isMobile ? (
-          <MobileWorkspace 
-            isOpen={showSidebar} 
-            onClose={() => setShowSidebar(false)} 
+          <MobileWorkspace
+            isOpen={showSidebar}
+            onClose={() => setShowSidebar(false)}
           />
         ) : isWorkspaceCollapsed ? (
           <div className="w-12 shrink-0 border-r flex flex-col items-center py-4 bg-sidebar">
-            <div 
+            <div
               className="p-1.5 rounded-lg bg-sidebar-accent/50 cursor-pointer hover:bg-sidebar-accent/80 transition-colors"
               onClick={() => setIsWorkspaceCollapsed(false)}
               title="Expand sidebar"
@@ -95,7 +95,7 @@ export function ResponsiveLayout({ onRunClick, onStopClick }: ResponsiveLayoutPr
         {/* Editor and Console Area */}
         <div className="flex-1 min-w-0 flex flex-col">
           {/* Editor */}
-          <div 
+          <div
             className={cn(
               "overflow-hidden transition-all duration-500 ease-in-out",
               isConsoleMinimized ? "flex-1" : "flex-[1_1_40%]"
@@ -105,7 +105,7 @@ export function ResponsiveLayout({ onRunClick, onStopClick }: ResponsiveLayoutPr
           </div>
 
           {/* Console */}
-          <div 
+          <div
             className={cn(
               "border-t overflow-hidden transition-all duration-500 ease-in-out",
               isConsoleMinimized ? "flex-[0_0_2.5rem]" : "flex-[1_1_60%]"
