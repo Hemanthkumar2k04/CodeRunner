@@ -137,11 +137,13 @@ CodeRunner implements a quota-based hybrid scheduling policy to prevent indefini
 3. **Counter Reset**: After executing a low-priority task, the high-priority counter resets to 0
 
 **Configuration**:
+
 - `HIGH_PRIORITY_QUOTA=5`: Execute 5 high-priority tasks before 1 low-priority task
 - Higher values favor interactive users, lower values provide more fairness
 - Recommended range: 3-7
 
 **Starvation Prevention Guarantee**:
+
 - Worst-case wait time for priority-1 tasks: `quota × avg_task_duration × num_priority_2_in_queue`
 - Example: With quota=5, avg task time=2s, and 20 priority-2 tasks queued, priority-1 task waits at most ~40s
 
@@ -159,6 +161,7 @@ CodeRunner implements a quota-based hybrid scheduling policy to prevent indefini
 **Event Loop Safety**:
 
 To prevent event loop starvation during high load:
+
 - **Batch Limit**: Maximum 10 task starts per `processQueue()` call
 - **Deferred Scheduling**: Uses `setImmediate()` instead of synchronous recursion
 - **Benefit**: Allows I/O, timers, and WebSocket messages to be processed between batches
@@ -166,6 +169,7 @@ To prevent event loop starvation during high load:
 **Key Optimization**: Tasks are executed without `await`, allowing true parallel execution without blocking the event loop.
 
 **Starvation Metrics** (exposed via `/admin/stats`):
+
 - `maxWaitTimeByPriority`: Longest wait time ever recorded for each priority
 - `currentWaitTimeByPriority`: Current wait time of oldest task per priority
 - `highPriorityCounter`: Progress toward next low-priority task selection
