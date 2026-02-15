@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { PanelLeftOpen, Folder } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Folder } from 'lucide-react';
 import { ResponsiveNavbar } from '@/components/ResponsiveNavbar';
 import { MobileWorkspace } from '@/components/MobileWorkspace';
 import { Workspace } from '@/components/Workspace';

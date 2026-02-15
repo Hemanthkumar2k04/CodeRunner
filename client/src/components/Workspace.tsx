@@ -1,6 +1,5 @@
 //client/src/components/Workspace.tsx
 import { useState, useCallback } from 'react';
-import { useLocation } from 'react-router-dom';
 import {
   Folder,
   FilePlus,
@@ -13,7 +12,6 @@ import {
   FileCode,
   Upload,
   FolderUp,
-  PanelLeftClose,
 } from 'lucide-react';
 import { useEditorStore } from '@/stores/useEditorStore';
 import type { EditorState } from '@/stores/useEditorStore';
@@ -202,7 +200,6 @@ interface WorkspaceProps {
 }
 
 export function Workspace({ onCollapse }: WorkspaceProps) {
-  const location = useLocation();
   const files = useEditorStore((state: EditorState) => state.files);
   const rootIds = useEditorStore((state: EditorState) => state.rootIds);
   const addFile = useEditorStore((state: EditorState) => state.addFile);

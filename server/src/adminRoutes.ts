@@ -1,6 +1,6 @@
 /**
  * Admin Routes - Protected endpoints for server monitoring and management
- * Access via: /admin?key=<ADMIN_KEY>
+ * Access via: X-Admin-Key header
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
@@ -13,17 +13,24 @@ import { config } from './config';
 const router = Router();
 
 // Admin authentication key (set via environment variable)
-const ADMIN_KEY = process.env.ADMIN_KEY || 'dev-admin-key-change-in-production';
+// In production, the key MUST be set via ADMIN_KEY env var — server will refuse to start otherwise.
+const ADMIN_KEY = process.env.ADMIN_KEY || (config.server.env === 'production' ? '' : 'dev-admin-key-change-in-production');
 
-if (ADMIN_KEY === 'dev-admin-key-change-in-production' && config.server.env === 'production') {
-  console.warn('[Admin] WARNING: Using default admin key in production! Set ADMIN_KEY environment variable.');
+if (!ADMIN_KEY && config.server.env === 'production') {
+  throw new Error('[Admin] FATAL: ADMIN_KEY environment variable is not set. Refusing to start in production without a secure admin key.');
+}
+
+if (ADMIN_KEY === 'dev-admin-key-change-in-production') {
+  console.warn('[Admin] WARNING: Using default admin key. Set ADMIN_KEY environment variable for production.');
 }
 
 /**
- * Simple admin authentication middleware
+ * Admin authentication middleware
+ * Reads the key exclusively from the X-Admin-Key header for security.
+ * Query parameter auth has been removed to prevent key leakage in URLs, logs, and browser history.
  */
 function adminAuth(req: Request, res: Response, next: NextFunction) {
-  const key = req.query.key || req.headers['x-admin-key'];
+  const key = req.headers['x-admin-key'];
   
   if (key !== ADMIN_KEY) {
     return res.status(401).json({ error: 'Unauthorized: Invalid admin key' });
@@ -33,12 +40,10 @@ function adminAuth(req: Request, res: Response, next: NextFunction) {
 }
 
 /**
- * GET /admin - Redirect to client-side admin page
+ * GET /admin - Redirect to client-side admin page (no key in URL)
  */
 router.get('/', adminAuth, (req: Request, res: Response) => {
-  // Redirect to the client-side admin page with the key
-  const key = req.query.key;
-  res.redirect(`/?admin=true&key=${key}#/admin?key=${key}`);
+  res.redirect('/#/admin');
 });
 
 /**

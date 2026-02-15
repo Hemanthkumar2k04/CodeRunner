@@ -64,7 +64,7 @@ const PORT = config.server.port;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // Admin routes - protected by key authentication
 app.use('/admin', adminRoutes);
@@ -82,10 +82,73 @@ export interface RunResult {
   exitCode: number;
 }
 
+// --- File Validation & Sanitization ---
+// Server-side validation to prevent shell injection, path traversal, and resource abuse.
+// Client-side validation exists but is trivially bypassed, so we enforce here.
+
+const SAFE_FILENAME_REGEX = /^[a-zA-Z0-9._\-\/]+$/;
+const DANGEROUS_PATH_PATTERNS = ['..', '\0'];
+
+function validateAndSanitizeFiles(files: File[]): { valid: boolean; error?: string } {
+  // Check file count
+  if (files.length > config.files.maxFilesPerSession) {
+    return { valid: false, error: `Too many files: ${files.length} (max: ${config.files.maxFilesPerSession})` };
+  }
+
+  let totalSize = 0;
+
+  for (const file of files) {
+    // Check for dangerous path patterns
+    for (const pattern of DANGEROUS_PATH_PATTERNS) {
+      if (file.path.includes(pattern) || file.name.includes(pattern)) {
+        return { valid: false, error: `Invalid file path: contains forbidden pattern '${pattern}'` };
+      }
+    }
+
+    // Check for absolute paths
+    if (file.path.startsWith('/') || file.path.startsWith('\\')) {
+      return { valid: false, error: `Invalid file path: absolute paths are not allowed` };
+    }
+
+    // Validate filename against allowlist regex
+    if (!SAFE_FILENAME_REGEX.test(file.path)) {
+      return { valid: false, error: `Invalid file path '${file.path}': contains disallowed characters` };
+    }
+    if (!SAFE_FILENAME_REGEX.test(file.name)) {
+      return { valid: false, error: `Invalid file name '${file.name}': contains disallowed characters` };
+    }
+
+    // Check individual file size
+    const fileSize = Buffer.byteLength(file.content || '', 'utf8');
+    if (fileSize > config.files.maxFileSize) {
+      return { valid: false, error: `File '${file.name}' exceeds maximum size (${fileSize} bytes, max: ${config.files.maxFileSize})` };
+    }
+
+    totalSize += fileSize;
+  }
+
+  // Check total payload size (maxFileSize * maxFiles as upper bound)
+  const maxTotalSize = config.files.maxFileSize;
+  if (totalSize > maxTotalSize) {
+    return { valid: false, error: `Total file size exceeds maximum (${totalSize} bytes, max: ${maxTotalSize})` };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Shell-escape a filename for safe use in shell commands.
+ * Uses single quotes which prevent all shell interpretation.
+ */
+function shellEscape(arg: string): string {
+  // Replace single quotes with '\'' (end quote, escaped quote, start quote)
+  return "'" + arg.replace(/'/g, "'\\''") + "'";
+}
+
 function getRunCommand(language: string, entryFile: string): string {
   switch(language) {
-    case 'python': return `python -u ${entryFile}`; // -u for unbuffered output
-    case 'javascript': return `node ${entryFile}`;
+    case 'python': return `python -u ${shellEscape(entryFile)}`; // -u for unbuffered output
+    case 'javascript': return `node ${shellEscape(entryFile)}`;
     case 'cpp': {
       // Determine compiler and file extension pattern based on entry file
       const ext = entryFile.split('.').pop()?.toLowerCase();
@@ -99,10 +162,10 @@ function getRunCommand(language: string, entryFile: string): string {
     }
     case 'java': {
       const className = entryFile.split('/').pop()?.replace('.java', '') || entryFile.replace('.java', '');
-      return `javac -d . $(find . -name "*.java") && java ${className}`;
+      return `javac -d . $(find . -name "*.java") && java ${shellEscape(className)}`;
     }
     case 'sql': {
-      return `MYSQL_PWD=root mysql -u root < ${entryFile}`;
+      return `MYSQL_PWD=root mysql -u root < ${shellEscape(entryFile)}`;
     }
     default: throw new Error(`Unsupported language: ${language}`);
   }
@@ -149,15 +212,19 @@ class ExecutionQueue {
       language,
     };
 
-    this.queue.push(queuedTask);
-    
-    // Sort queue by priority (higher first), then by timestamp (FIFO)
-    this.queue.sort((a, b) => {
-      if (a.priority !== b.priority) {
-        return b.priority - a.priority;
+    // Binary search for correct insertion index (sorted by priority desc, then timestamp asc)
+    let lo = 0, hi = this.queue.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      const cmp = this.queue[mid];
+      if (cmp.priority > queuedTask.priority || 
+          (cmp.priority === queuedTask.priority && cmp.timestamp <= queuedTask.timestamp)) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
       }
-      return a.timestamp - b.timestamp;
-    });
+    }
+    this.queue.splice(lo, 0, queuedTask);
 
     this.processQueue();
   }
@@ -256,21 +323,21 @@ const executionQueue = new ExecutionQueue(
 export { executionQueue };
 
 // --- Kernel Manager Callbacks ---
-// Set up kernel output and status streaming to clients
-kernelManager.onOutput((kernelId, output) => {
+// Set up kernel output and status streaming to the owning socket only
+kernelManager.onOutput((kernelId, socketId, output) => {
   console.log(`[Kernel Output] kernelId=${kernelId}, cellId=${output.cellId}, type=${output.type}, content=${output.content.substring(0, 50)}`);
-  // Broadcast to all sockets (in production, filter by socketId)
-  io.emit('kernel:output', { kernelId, ...output });
+  // Send only to the owning socket for privacy
+  io.to(socketId).emit('kernel:output', { kernelId, ...output });
 });
 
-kernelManager.onStatusChange((kernelId, status) => {
+kernelManager.onStatusChange((kernelId, socketId, status) => {
   console.log(`[Kernel Status] kernelId=${kernelId}, status=${status}`);
-  io.emit('kernel:status', { kernelId, status });
+  io.to(socketId).emit('kernel:status', { kernelId, status });
 });
 
-kernelManager.onCellComplete((kernelId, cellId) => {
+kernelManager.onCellComplete((kernelId, socketId, cellId) => {
   console.log(`[Kernel Cell Complete] kernelId=${kernelId}, cellId=${cellId}`);
-  io.emit('kernel:cell_complete', { kernelId, cellId });
+  io.to(socketId).emit('kernel:cell_complete', { kernelId, cellId });
 });
 
 // --- WebSocket Handling ---
@@ -336,6 +403,14 @@ io.on('connection', (socket) => {
       
       // Track execution start
       adminMetrics.trackExecutionStarted(executionId);
+
+      // Validate and sanitize files before proceeding
+      const validation = validateAndSanitizeFiles(files);
+      if (!validation.valid) {
+        socket.emit('output', { sessionId, type: 'stderr', data: `Validation Error: ${validation.error}\n` });
+        socket.emit('exit', { sessionId, code: 1 });
+        return;
+      }
 
       const runtimeConfig = config.runtimes[language as keyof typeof config.runtimes];
       if (!runtimeConfig) {
@@ -717,125 +792,8 @@ app.get('/health', (req, res) => {
   });
 });
 
-// NOTE: Network, cleanup, and queue stats moved to /admin routes with authentication
-// To access these endpoints, use: /admin/stats?key=<ADMIN_KEY>
-
-// Legacy endpoints (deprecated - use /admin/stats instead)
-app.get('/api/network-stats', async (req, res) => {
-  try {
-    const networkStats = await getNetworkStats();
-    const subnetStats = getSubnetStats();
-    
-    res.json({
-      status: 'ok',
-      server: {
-        environment: config.server.env,
-        port: config.server.port,
-      },
-      resources: {
-        docker: {
-          memory: config.docker.memory,
-          cpus: config.docker.cpus,
-        },
-        networkCapacity: {
-          ...subnetStats,
-          warnings: subnetStats.totalUsed > (subnetStats.totalAvailable * 0.8) 
-            ? ['Approaching subnet capacity (>80% used)']
-            : [],
-        }
-      },
-      networks: networkStats,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Cleanup metrics endpoint
-app.get('/api/cleanup-stats', async (req, res) => {
-  try {
-    const poolMetrics = sessionPool.getMetrics();
-    const networkMetrics = getNetworkMetrics();
-    const subnetStats = getSubnetStats();
-    
-    // Get current session pool status
-    const sessionCount = sessionPool.getSessionCount();
-    
-    // Add warnings if needed
-    const warnings: string[] = [];
-    if (poolMetrics.cleanupErrors > 10) {
-      warnings.push(`High container cleanup error count: ${poolMetrics.cleanupErrors}`);
-    }
-    if (networkMetrics.cleanupErrors > 10) {
-      warnings.push(`High network cleanup error count: ${networkMetrics.cleanupErrors}`);
-    }
-    if (networkMetrics.escalationLevel > 0) {
-      warnings.push(`Network cleanup escalation active (level ${networkMetrics.escalationLevel})`);
-    }
-    if (subnetStats.totalUsed > (subnetStats.totalAvailable * 0.8)) {
-      warnings.push('Subnet capacity above 80%');
-    }
-    
-    res.json({
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      containers: {
-        created: poolMetrics.containersCreated,
-        reused: poolMetrics.containersReused,
-        deleted: poolMetrics.containersDeleted,
-        cleanupErrors: poolMetrics.cleanupErrors,
-        lastCleanupDuration: poolMetrics.lastCleanupDuration,
-        activeSessions: sessionCount,
-      },
-      networks: {
-        created: networkMetrics.networksCreated,
-        deleted: networkMetrics.networksDeleted,
-        cleanupErrors: networkMetrics.cleanupErrors,
-        escalationLevel: networkMetrics.escalationLevel,
-        escalationDescription: networkMetrics.escalationLevel === 2 
-          ? 'CRITICAL - Emergency cleanup' 
-          : networkMetrics.escalationLevel === 1 
-          ? 'WARNING - Aggressive cleanup'
-          : 'NORMAL',
-      },
-      subnets: subnetStats,
-      warnings
-    });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Queue monitoring endpoint
-app.get('/api/queue-stats', (req, res) => {
-  try {
-    const stats = executionQueue.getDetailedStats();
-    const warnings: string[] = [];
-    
-    // Add warnings based on queue state
-    if (stats.queued > stats.maxConcurrent * 2) {
-      warnings.push(`Queue backlog: ${stats.queued} requests queued (${Math.round(stats.queued / stats.maxConcurrent)}x capacity)`);
-    }
-    if (stats.queueUtilization > 90) {
-      warnings.push(`High concurrency: ${stats.queueUtilization}% of capacity in use`);
-    }
-    if (stats.failedTasks > stats.completedTasks * 0.1) {
-      warnings.push(`High failure rate: ${stats.failedTasks} failed out of ${stats.completedTasks + stats.failedTasks} total`);
-    }
-    
-    const response: any = {
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      queue: stats,
-      warnings,
-    };
-    
-    res.json(response);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
+// NOTE: Legacy endpoints (/api/network-stats, /api/cleanup-stats, /api/queue-stats) have been
+// removed. Use the authenticated /admin/stats endpoint instead: /admin/stats with X-Admin-Key header.
 
 // API endpoint for code execution - networking always enabled
 app.post('/api/run', async (req, res) => {
@@ -848,6 +806,13 @@ app.post('/api/run', async (req, res) => {
 
   if (files.length === 0) {
     res.status(400).json({ error: "No files provided." });
+    return;
+  }
+
+  // Validate and sanitize files
+  const validation = validateAndSanitizeFiles(files);
+  if (!validation.valid) {
+    res.status(400).json({ error: `Validation Error: ${validation.error}` });
     return;
   }
 

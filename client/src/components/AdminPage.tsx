@@ -164,9 +164,10 @@ export function AdminPage() {
 
     try {
       console.log('[AdminPage] Fetching /admin/stats...');
-      const response = await fetch(`/admin/stats?key=${adminKey}`, {
+      const response = await fetch(`/admin/stats`, {
         signal: abortControllerRef.current.signal,
         cache: 'no-store', // Prevent caching
+        headers: { 'X-Admin-Key': adminKey },
       });
       if (!response.ok) {
         if (response.status === 401) {
@@ -175,7 +176,7 @@ export function AdminPage() {
           setAdminKey('');
           setKeyInput('');
           setStats(null);
-          localStorage.removeItem('adminKey');
+          sessionStorage.removeItem('adminKey');
           throw new Error('Session expired. Please login again.');
         }
         throw new Error('Failed to fetch stats');
@@ -215,7 +216,7 @@ export function AdminPage() {
 
   // Load saved key from localStorage on mount
   useEffect(() => {
-    const savedKey = localStorage.getItem('adminKey');
+    const savedKey = sessionStorage.getItem('adminKey');
     console.log('[AdminPage] Checking for saved key:', savedKey ? 'found' : 'not found');
     if (savedKey) {
       setAdminKey(savedKey);
@@ -252,7 +253,9 @@ export function AdminPage() {
     setAuthError(null);
 
     try {
-      const response = await fetch(`/admin/stats?key=${keyInput}`);
+      const response = await fetch(`/admin/stats`, {
+        headers: { 'X-Admin-Key': keyInput },
+      });
       if (!response.ok) {
         throw new Error(response.status === 401 ? 'Invalid admin key' : 'Authentication failed');
       }
@@ -260,7 +263,7 @@ export function AdminPage() {
       // Key is valid, save and authenticate
       setAdminKey(keyInput);
       setIsAuthenticated(true);
-      localStorage.setItem('adminKey', keyInput);
+      sessionStorage.setItem('adminKey', keyInput);
       setAuthError(null);
     } catch (err: any) {
       setAuthError(err.message);
@@ -274,7 +277,7 @@ export function AdminPage() {
     setAdminKey('');
     setKeyInput('');
     setStats(null);
-    localStorage.removeItem('adminKey');
+    sessionStorage.removeItem('adminKey');
     hasLoadedOnceRef.current = false;
     isFetchingRef.current = false;
   };
@@ -290,8 +293,9 @@ export function AdminPage() {
     }
 
     try {
-      const response = await fetch(`/admin/reset?key=${adminKey}`, {
+      const response = await fetch(`/admin/reset`, {
         method: 'POST',
+        headers: { 'X-Admin-Key': adminKey },
       });
       
       if (!response.ok) {
@@ -309,7 +313,23 @@ export function AdminPage() {
     if (!adminKey) return;
     
     const date = new Date().toISOString().split('T')[0];
-    window.location.href = `/admin/report/download?key=${adminKey}&date=${date}`;
+    try {
+      const response = await fetch(`/admin/report/download?date=${date}`, {
+        headers: { 'X-Admin-Key': adminKey },
+      });
+      if (!response.ok) throw new Error('Failed to download report');
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `report-${date}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setError(err.message);
+    }
   };
 
   // Show login form if not authenticated

@@ -58,6 +58,7 @@ class AdminMetricsService {
   private dailyMetrics: Map<string, DailyMetrics> = new Map();
   private requestHistory: RequestMetrics[] = [];
   private maxRequestHistory: number = 10000; // Keep last 10k requests in memory
+  private maxLatenciesPerDay: number = 10000; // Cap latencies per day to bound memory
   private activeClients: Set<string> = new Set();
   private activeExecutions: Set<string> = new Set();
   private serverSnapshots: ServerSnapshot[] = [];
@@ -206,6 +207,10 @@ class AdminMetricsService {
     }
     
     metrics.requestLatencies.push(request.executionTime);
+    // Cap latencies array to prevent unbounded memory growth
+    if (metrics.requestLatencies.length > this.maxLatenciesPerDay) {
+      metrics.requestLatencies.shift();
+    }
     metrics.uniqueClients.add(request.clientId);
     
     // Update language stats

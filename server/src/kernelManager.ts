@@ -147,13 +147,13 @@ class KernelManager {
   private notebookKernels: Map<string, string> = new Map();
   
   // Output callback for streaming results to client
-  private outputCallback: ((kernelId: string, output: KernelOutput) => void) | null = null;
+  private outputCallback: ((kernelId: string, socketId: string, output: KernelOutput) => void) | null = null;
   
   // Status change callback
-  private statusCallback: ((kernelId: string, status: KernelSession['status']) => void) | null = null;
+  private statusCallback: ((kernelId: string, socketId: string, status: KernelSession['status']) => void) | null = null;
   
   // Cell completion callback
-  private cellCompleteCallback: ((kernelId: string, cellId: string) => void) | null = null;
+  private cellCompleteCallback: ((kernelId: string, socketId: string, cellId: string) => void) | null = null;
 
   constructor() {
     console.log('[KernelManager] Initialized notebook kernel manager');
@@ -162,21 +162,21 @@ class KernelManager {
   /**
    * Set callback for kernel output
    */
-  onOutput(callback: (kernelId: string, output: KernelOutput) => void): void {
+  onOutput(callback: (kernelId: string, socketId: string, output: KernelOutput) => void): void {
     this.outputCallback = callback;
   }
 
   /**
    * Set callback for kernel status changes
    */
-  onStatusChange(callback: (kernelId: string, status: KernelSession['status']) => void): void {
+  onStatusChange(callback: (kernelId: string, socketId: string, status: KernelSession['status']) => void): void {
     this.statusCallback = callback;
   }
 
   /**
    * Set callback for cell completion
    */
-  onCellComplete(callback: (kernelId: string, cellId: string) => void): void {
+  onCellComplete(callback: (kernelId: string, socketId: string, cellId: string) => void): void {
     this.cellCompleteCallback = callback;
   }
 
@@ -574,7 +574,8 @@ class KernelManager {
    */
   private emitOutput(kernelId: string, output: KernelOutput): void {
     if (this.outputCallback) {
-      this.outputCallback(kernelId, output);
+      const session = this.kernels.get(kernelId);
+      this.outputCallback(kernelId, session?.socketId || '', output);
     }
   }
 
@@ -583,7 +584,8 @@ class KernelManager {
    */
   private emitStatus(kernelId: string, status: KernelSession['status']): void {
     if (this.statusCallback) {
-      this.statusCallback(kernelId, status);
+      const session = this.kernels.get(kernelId);
+      this.statusCallback(kernelId, session?.socketId || '', status);
     }
   }
 
@@ -592,7 +594,8 @@ class KernelManager {
    */
   private emitCellComplete(kernelId: string, cellId: string): void {
     if (this.cellCompleteCallback) {
-      this.cellCompleteCallback(kernelId, cellId);
+      const session = this.kernels.get(kernelId);
+      this.cellCompleteCallback(kernelId, session?.socketId || '', cellId);
     }
   }
 

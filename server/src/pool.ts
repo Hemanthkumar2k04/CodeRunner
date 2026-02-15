@@ -40,6 +40,10 @@ class SessionContainerPool {
   // Map: sessionId -> array of containers for that session
   private pool: Map<string, SessionContainer[]> = new Map();
   
+  // Mutex: pending container acquisition promises to prevent race conditions
+  // Key: "sessionId:language" -> Promise that resolves to containerId
+  private pendingAcquisitions: Map<string, Promise<string>> = new Map();
+  
   // Cleanup metrics
   private metrics: CleanupMetrics = {
     containersCreated: 0,
@@ -114,6 +118,7 @@ class SessionContainerPool {
                    cleanedCount++;
                    this.metrics.containersDeleted++;
                 } catch (e: any) {
+                   console.warn(`[Pool] Failed to delete expired container ${containerId.substring(0, 12)}: ${e.message}`);
                    this.metrics.cleanupErrors++;
                 }
              }
@@ -165,7 +170,9 @@ class SessionContainerPool {
                await execAsync(`docker rm -fv ${id}`);
                this.metrics.containersDeleted++;
                cleanedCount++;
-             } catch (e) { /* ignore */ }
+             } catch (e: any) {
+               console.warn(`[Pool] Failed to remove orphaned container ${id}: ${e.message}`);
+             }
           }
         }
       }
@@ -202,7 +209,9 @@ class SessionContainerPool {
 
   /**
    * Get or create a container for the session and language
-   * Reuses existing containers within the same session or creates new ones
+   * Reuses existing containers within the same session or creates new ones.
+   * Uses a promise-based mutex to prevent race conditions when multiple
+   * concurrent requests try to acquire a container for the same session+language.
    */
   async getOrCreateContainer(
     language: string,
@@ -214,16 +223,13 @@ class SessionContainerPool {
       throw new Error(`Unknown language: ${language}`);
     }
 
-    // Check if session has containers
+    // Check if session has an available container (fast path, no mutex needed)
     const sessionContainers = this.pool.get(sessionId) || [];
-    
-    // Find available container for this language (not in use)
     const existingContainer = sessionContainers.find(
       c => c.language === language && !c.inUse
     );
 
     if (existingContainer) {
-      // Reuse existing container
       existingContainer.inUse = true;
       existingContainer.lastUsed = Date.now();
       this.metrics.containersReused++;
@@ -231,30 +237,57 @@ class SessionContainerPool {
       return existingContainer.containerId;
     }
 
-    // No available container - create new one
+    // No available container — use mutex to prevent duplicate creation
+    const mutexKey = `${sessionId}:${language}`;
+    const pendingPromise = this.pendingAcquisitions.get(mutexKey);
+    if (pendingPromise) {
+      // Another request is already creating a container for this session+language.
+      // Wait for it, then check again for an available container.
+      console.log(`[Pool] Waiting for pending container acquisition: ${mutexKey}`);
+      await pendingPromise;
+      // Re-check after the pending creation completes
+      const updatedContainers = this.pool.get(sessionId) || [];
+      const nowAvailable = updatedContainers.find(
+        c => c.language === language && !c.inUse
+      );
+      if (nowAvailable) {
+        nowAvailable.inUse = true;
+        nowAvailable.lastUsed = Date.now();
+        this.metrics.containersReused++;
+        console.log(`[Pool] Reusing container after mutex wait for ${sessionId}:${language} - ${nowAvailable.containerId.substring(0, 12)}`);
+        return nowAvailable.containerId;
+      }
+    }
+
+    // Create new container with mutex
     console.log(`[Pool] Creating new container for ${sessionId}:${language}`);
-    const containerId = await this.createContainer(language, sessionId, networkName);
-    
-    this.metrics.containersCreated++;
-    
-    // Track container creation for admin metrics
-    adminMetrics.trackContainerCreated(containerId);
+    const creationPromise = this.createContainer(language, sessionId, networkName);
+    this.pendingAcquisitions.set(mutexKey, creationPromise);
 
-    // Add to pool
-    const newContainer: SessionContainer = {
-      containerId,
-      language,
-      sessionId,
-      networkName,
-      lastUsed: Date.now(),
-      inUse: true,
-    };
+    try {
+      const containerId = await creationPromise;
+      
+      this.metrics.containersCreated++;
+      adminMetrics.trackContainerCreated(containerId);
 
-    sessionContainers.push(newContainer);
-    this.pool.set(sessionId, sessionContainers);
+      const newContainer: SessionContainer = {
+        containerId,
+        language,
+        sessionId,
+        networkName,
+        lastUsed: Date.now(),
+        inUse: true,
+      };
 
-    console.log(`[Pool] Created container ${containerId.substring(0, 12)} for ${sessionId}:${language}`);
-    return containerId;
+      const currentContainers = this.pool.get(sessionId) || [];
+      currentContainers.push(newContainer);
+      this.pool.set(sessionId, currentContainers);
+
+      console.log(`[Pool] Created container ${containerId.substring(0, 12)} for ${sessionId}:${language}`);
+      return containerId;
+    } finally {
+      this.pendingAcquisitions.delete(mutexKey);
+    }
   }
 
   /**
@@ -334,10 +367,10 @@ class SessionContainerPool {
       const containerId = stdout.trim();
       console.log(`[Pool] Container created successfully: ${containerId.substring(0, 12)}`);
       
-      // For MySQL, wait for initialization
+      // For MySQL, wait for initialization with readiness polling
       if (language === 'sql') {
         console.log(`[Pool] Waiting for MySQL to initialize...`);
-        await new Promise(resolve => setTimeout(resolve, 10000));
+        await this.waitForMySQLReady(containerId, 30000);
       }
 
       return containerId;
@@ -345,6 +378,31 @@ class SessionContainerPool {
       console.error(`[Pool] Failed to create container:`, error.message);
       throw error;
     }
+  }
+
+  /**
+   * Wait for MySQL container to become ready by polling mysqladmin ping.
+   * Returns as soon as MySQL responds, or throws if timeout is exceeded.
+   */
+  private async waitForMySQLReady(containerId: string, timeoutMs: number = 30000): Promise<void> {
+    const pollInterval = 1000; // 1 second between polls
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeoutMs) {
+      try {
+        await execAsync(
+          `docker exec ${containerId} mysqladmin ping -u root -proot --silent`,
+          { timeout: 5000 }
+        );
+        console.log(`[Pool] MySQL is ready in container ${containerId.substring(0, 12)} (${Date.now() - startTime}ms)`);
+        return;
+      } catch {
+        // MySQL not ready yet, wait and retry
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+      }
+    }
+
+    throw new Error(`MySQL failed to become ready within ${timeoutMs}ms in container ${containerId.substring(0, 12)}`);
   }
 
   /**

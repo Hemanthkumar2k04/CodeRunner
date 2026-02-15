@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import { idbStorage } from '@/lib/idb-storage';
 
 // Constants for storage limits
 export const MAX_FILE_SIZE = 500 * 1024; // 500KB per file
@@ -786,7 +787,7 @@ export const useEditorStore = create<EditorState>()(
     }),
     {
       name: 'code-runner-editor-storage',
-      storage: createJSONStorage(() => sessionStorage),
+      storage: createJSONStorage(() => idbStorage),
       partialize: (state) => ({
         files: state.files,
         rootIds: state.rootIds,
