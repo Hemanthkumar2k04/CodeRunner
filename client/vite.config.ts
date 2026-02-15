@@ -10,6 +10,15 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        entryFileNames: 'coderunner-[hash].js',
+        chunkFileNames: 'coderunner-[hash].js',
+        assetFileNames: 'coderunner-[hash][extname]',
+      },
+    },
+  },
   server: {
     host: '0.0.0.0', // Expose to all network interfaces
     port: 5173,

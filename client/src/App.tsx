@@ -3,8 +3,6 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import './App.css';
 import { ThemeProvider } from './components/theme-provider';
 import { Toaster } from './components/ui/toaster';
-import { HomePage } from './components/HomePage';
-import { LabPage } from './components/LabPage';
 import { AdminPage } from './components/AdminPage';
 import { ResponsiveNavbar } from './components/ResponsiveNavbar';
 import { Folder } from 'lucide-react';
@@ -263,11 +261,10 @@ function App() {
       <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
         <Toaster />
         <Routes>
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={<Navigate to="/editor" replace />} />
           <Route path="/editor" element={<EditorPage />} />
-          <Route path="/lab" element={<LabPage />} />
           <Route path="/admin" element={<AdminPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/editor" replace />} />
         </Routes>
       </ThemeProvider>
     </Router>
