@@ -87,15 +87,14 @@ CodeRunner is a distributed code execution platform that safely executes user co
 
 - `index.ts` - Express server setup and routes
 - `kernelManager.ts` - Jupyter kernel management
-- `workerPool.ts` - Worker thread pool management
 - `pool.ts` - Container pool lifecycle management
 - `config.ts` - Configuration management
 
 ### 3. Execution Queue System
 
-**Location**: `server/src/workerPool.ts`
+**Location**: `server/src/index.ts`
 
-The queue is the heart of CodeRunner's execution model.
+The queue is the heart of CodeRunner's execution model, managing task prioritization and concurrent container execution.
 
 **Architecture**:
 
@@ -293,7 +292,6 @@ Client                          Server
 - `MAX_CONCURRENT_SESSIONS` - Concurrency limit (default: 50)
 - `QUEUE_TIMEOUT` - Task expiration time (default: 60s)
 - `CONTAINER_TTL` - Container reuse timeout (default: 60s)
-- `WORKER_THREADS` - Worker thread count
 
 ## Technology Stack
 

@@ -90,7 +90,7 @@ For detailed testing information, visit `docs/testing.md`.
 
 - **Frontend**: React, TypeScript, Vite, Monaco Editor
 - **Backend**: Node.js, Express, TypeScript
-- **Execution**: Docker, Worker Threads, Queue System
+- **Execution**: Docker, Queue System, Container Pools
 - **Real-Time**: WebSocket (Socket.IO)
 - **Testing**: Jest, Vitest, Java Load Tester
 

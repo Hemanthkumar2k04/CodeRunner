@@ -151,6 +151,19 @@ class SubnetAllocator {
 const subnetAllocator = new SubnetAllocator();
 
 /**
+ * Mutex for network creation to prevent race conditions
+ * Key: networkName -> Promise that resolves when network is ready
+ */
+const pendingNetworkCreations: Map<string, Promise<string>> = new Map();
+
+/**
+ * Emergency cleanup mutex to prevent concurrent prune operations
+ */
+let emergencyCleanupRunning = false;
+let lastEmergencyCleanup = 0;
+const EMERGENCY_CLEANUP_COOLDOWN = 5000; // 5 seconds minimum between emergency cleanups
+
+/**
  * Check if a Docker network exists
  */
 export async function networkExists(networkName: string): Promise<boolean> {
@@ -164,17 +177,36 @@ export async function networkExists(networkName: string): Promise<boolean> {
 
 /**
  * Get or create a session network (idempotent)
+ * Uses mutex to prevent race conditions when multiple requests
+ * try to create the same network simultaneously
  */
 export async function getOrCreateSessionNetwork(sessionId: string): Promise<string> {
   const networkName = `${config.network.sessionNetworkPrefix}${sessionId}`;
   
+  // Fast path: if network exists, return immediately
   const exists = await networkExists(networkName);
   if (exists) {
     console.log(`[NetworkManager] Network already exists: ${networkName}`);
     return networkName;
   }
   
-  return await createSessionNetwork(sessionId);
+  // Check if another request is already creating this network
+  const pendingCreation = pendingNetworkCreations.get(networkName);
+  if (pendingCreation) {
+    console.log(`[NetworkManager] Waiting for pending network creation: ${networkName}`);
+    return await pendingCreation;
+  }
+  
+  // Create the network with mutex protection
+  const creationPromise = createSessionNetworkWithRetry(sessionId);
+  pendingNetworkCreations.set(networkName, creationPromise);
+  
+  try {
+    const result = await creationPromise;
+    return result;
+  } finally {
+    pendingNetworkCreations.delete(networkName);
+  }
 }
 
 /**
@@ -207,12 +239,53 @@ export function getSubnetStats() {
   return subnetAllocator.getStats();
 }
 
+/**
+ * Create session network with retry logic and exponential backoff
+ */
+async function createSessionNetworkWithRetry(sessionId: string, maxRetries: number = 3): Promise<string> {
+  const networkName = `${config.network.sessionNetworkPrefix}${sessionId}`;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await createSessionNetwork(sessionId);
+    } catch (error: any) {
+      // If network already exists (race condition), verify and return
+      if (error.message.includes('already exists')) {
+        const exists = await networkExists(networkName);
+        if (exists) {
+          console.log(`[NetworkManager] Network created by concurrent request: ${networkName}`);
+          return networkName;
+        }
+      }
+      
+      // If this is the last attempt, throw the error
+      if (attempt === maxRetries) {
+        throw error;
+      }
+      
+      // Exponential backoff: 100ms, 200ms, 400ms...
+      const backoffMs = 100 * Math.pow(2, attempt - 1);
+      console.log(`[NetworkManager] Retry ${attempt}/${maxRetries} for ${networkName} after ${backoffMs}ms`);
+      await new Promise(resolve => setTimeout(resolve, backoffMs));
+    }
+  }
+  
+  throw new Error(`Failed to create network after ${maxRetries} attempts`);
+}
+
 /** 
  * Create a session network with explicit subnet allocation
  * Uses configured address pools to avoid Docker's default pool exhaustion
  */
 export async function createSessionNetwork(sessionId: string): Promise<string> {
   const networkName = `${config.network.sessionNetworkPrefix}${sessionId}`;
+  
+  // Double-check if network already exists (could have been created by another concurrent request)
+  const exists = await networkExists(networkName);
+  if (exists) {
+    console.log(`[NetworkManager] Network already exists (race): ${networkName}`);
+    return networkName;
+  }
   
   // Allocate a subnet from configured pools
   const subnet = subnetAllocator.allocateSubnet();
@@ -234,79 +307,33 @@ export async function createSessionNetwork(sessionId: string): Promise<string> {
     
     // Check if the error is "network already exists" - this can happen in race conditions
     if (error.message.includes('already exists')) {
-      console.log(`[NetworkManager] Network ${networkName} already exists, will attempt cleanup and retry`);
-      
-      // Release the subnet we allocated since we'll reuse the existing network's subnet
+      console.log(`[NetworkManager] Network ${networkName} already exists (concurrent creation)`);
       subnetAllocator.releaseSubnet(subnet);
       
-      // Try to remove the existing network and recreate
-      try {
-        await execAsync(`docker network rm ${networkName}`, { timeout: config.docker.commandTimeout });
-        console.log(`[NetworkManager] Removed existing network ${networkName}`);
-        
-        // Now allocate a new subnet and create the network
-        const newSubnet = subnetAllocator.allocateSubnet();
-        if (!newSubnet) {
-          throw new Error('Failed to allocate subnet after cleanup: all address pools exhausted');
-        }
-        
-        const recreateCommand = `docker network create --driver ${config.network.networkDriver} --subnet=${newSubnet} --label ${config.network.networkLabel} --label session=${sessionId} ${networkName}`;
-        await execAsync(recreateCommand, { timeout: config.docker.commandTimeout });
-        console.log(`[NetworkManager] Network recreated: ${networkName} with subnet ${newSubnet}`);
+      // Verify the network exists and is usable
+      const exists = await networkExists(networkName);
+      if (exists) {
         return networkName;
-      } catch (cleanupError: any) {
-        // If we can't cleanup, the network might still be usable if it has no containers
-        console.error(`[NetworkManager] Failed to cleanup existing network ${networkName}:`, cleanupError.message);
-        
-        // Check if network exists and is empty - if so, we can use it
-        try {
-          const exists = await networkExists(networkName);
-          if (exists) {
-            const { stdout: containersOutput } = await execAsync(
-              `docker network inspect ${networkName} --format "{{len .Containers}}"`,
-              { timeout: 5000 }
-            );
-            const containerCount = parseInt(containersOutput.trim(), 10);
-            
-            if (containerCount === 0) {
-              console.log(`[NetworkManager] Network ${networkName} exists and is empty, will reuse it`);
-              return networkName;
-            } else {
-              throw new Error(`Network ${networkName} already exists and has ${containerCount} containers attached`);
-            }
-          }
-        } catch (inspectError) {
-          console.error(`[NetworkManager] Failed to inspect existing network:`, inspectError);
-        }
-        
-        throw new Error(`Failed to handle existing network ${networkName}: ${cleanupError.message}`);
       }
+      throw new Error(`Network ${networkName} claimed to exist but not found`);
     }
     
     // Release the subnet since network creation failed
     subnetAllocator.releaseSubnet(subnet);
     
-    // If creation fails due to subnet conflict, try emergency cleanup
+    // If creation fails due to subnet conflict, try emergency cleanup (with mutex)
     if (error.message.includes('address pool') || error.message.includes('subnet') || error.message.includes('overlap')) {
       console.log(`[NetworkManager] Subnet conflict detected, attempting emergency cleanup...`);
-      await emergencyNetworkCleanup();
-      
-      // Allocate a new subnet and retry
-      const retrySubnet = subnetAllocator.allocateSubnet();
-      if (!retrySubnet) {
-        throw new Error('Failed to allocate subnet after cleanup: all address pools exhausted');
-      }
-
-      const retryCommand = `docker network create --driver ${config.network.networkDriver} --subnet=${retrySubnet} --label ${config.network.networkLabel} --label session=${sessionId} ${networkName}`;
       
       try {
-        await execAsync(retryCommand, { timeout: config.docker.commandTimeout });
-        console.log(`[NetworkManager] Network created after cleanup: ${networkName} with subnet ${retrySubnet}`);
-        return networkName;
-      } catch (retryError: any) {
-        subnetAllocator.releaseSubnet(retrySubnet);
-        throw new Error(`Failed to create session network after cleanup: ${retryError.message}`);
+        await emergencyNetworkCleanup();
+      } catch (cleanupError) {
+        console.error(`[NetworkManager] Emergency cleanup failed:`, cleanupError);
+        // Continue anyway - the retry mechanism will handle it
       }
+      
+      // Don't retry here - let the caller (createSessionNetworkWithRetry) handle retries
+      throw new Error(`Failed to create network due to subnet conflict: ${error.message}`);
     }
     
     throw new Error(`Failed to create session network: ${error.message}`);
@@ -436,44 +463,80 @@ export async function cleanupOrphanedNetworks(maxAgeMs: number = 300000): Promis
 /**
  * Emergency cleanup - prune all unused CodeRunner networks immediately
  * Used when subnet exhaustion is detected
+ * Uses mutex to prevent concurrent prune operations which Docker doesn't allow
  */
 export async function emergencyNetworkCleanup(): Promise<void> {
+  const now = Date.now();
+  
+  // Check if emergency cleanup is already running
+  if (emergencyCleanupRunning) {
+    console.log('[NetworkManager] ⚠️ EMERGENCY: Cleanup already in progress, skipping...');
+    return;
+  }
+  
+  // Check cooldown to avoid spamming cleanup
+  if (now - lastEmergencyCleanup < EMERGENCY_CLEANUP_COOLDOWN) {
+    const remainingMs = EMERGENCY_CLEANUP_COOLDOWN - (now - lastEmergencyCleanup);
+    console.log(`[NetworkManager] ⚠️ EMERGENCY: Cleanup on cooldown, ${remainingMs}ms remaining`);
+    return;
+  }
+  
+  emergencyCleanupRunning = true;
+  lastEmergencyCleanup = now;
+  
   try {
     console.log('[NetworkManager] ⚠️ EMERGENCY: Pruning all unused CodeRunner networks');
     
     // Docker network prune removes all unused networks matching filter
-    const { stdout } = await execAsync(
-      `docker network prune -f --filter "label=${config.network.networkLabel}"`,
-      { timeout: 30000 }
-    );
-    
-    console.log(`[NetworkManager] Emergency cleanup result: ${stdout.trim()}`);
+    try {
+      const { stdout } = await execAsync(
+        `docker network prune -f --filter "label=${config.network.networkLabel}"`,
+        { timeout: 30000 }
+      );
+      console.log(`[NetworkManager] Emergency cleanup result: ${stdout.trim()}`);
+    } catch (pruneError: any) {
+      // If prune is already running (by another process), that's okay
+      if (pruneError.message.includes('already running')) {
+        console.log('[NetworkManager] ⚠️ EMERGENCY: Prune already running in another process');
+      } else {
+        throw pruneError;
+      }
+    }
     
     // Additional manual cleanup of session networks with no containers
     const networks = await listSessionNetworks();
     let manualCleanupCount = 0;
     
-    for (const networkName of networks) {
-      try {
-        const { stdout: containersOutput } = await execAsync(
-          `docker network inspect ${networkName} --format "{{len .Containers}}"`,
-          { timeout: 5000 }
-        );
-        const containerCount = parseInt(containersOutput.trim(), 10);
-        
-        if (containerCount === 0) {
-          const sessionId = networkName.replace(config.network.sessionNetworkPrefix, '');
-          await deleteSessionNetwork(sessionId);
-          manualCleanupCount++;
+    // Process in batches to avoid overwhelming Docker
+    const batchSize = 10;
+    for (let i = 0; i < networks.length; i += batchSize) {
+      const batch = networks.slice(i, i + batchSize);
+      const cleanupPromises = batch.map(async (networkName) => {
+        try {
+          const { stdout: containersOutput } = await execAsync(
+            `docker network inspect ${networkName} --format "{{len .Containers}}"`,
+            { timeout: 5000 }
+          );
+          const containerCount = parseInt(containersOutput.trim(), 10);
+          
+          if (containerCount === 0) {
+            const sessionId = networkName.replace(config.network.sessionNetworkPrefix, '');
+            await deleteSessionNetwork(sessionId);
+            manualCleanupCount++;
+          }
+        } catch (error) {
+          // Ignore errors during emergency cleanup - network might already be deleted
         }
-      } catch (error) {
-        // Ignore errors during emergency cleanup
-      }
+      });
+      
+      await Promise.all(cleanupPromises);
     }
     
     console.log(`[NetworkManager] Emergency cleanup: manually removed ${manualCleanupCount} additional networks`);
   } catch (error) {
     console.error('[NetworkManager] Emergency cleanup failed:', error);
+  } finally {
+    emergencyCleanupRunning = false;
   }
 }
 

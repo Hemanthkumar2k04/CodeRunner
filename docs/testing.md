@@ -313,31 +313,24 @@ Identifies breaking points and resource limits.
 
 If load test results are poor:
 
-1. **Increase max concurrent** in config (default: 50)
+1. **Increase max concurrent sessions** in config (default: 50)
 
    ```bash
    # In server/.env
    MAX_CONCURRENT_SESSIONS=100
    ```
 
-2. **Increase worker threads** (default: CPU cores)
-
-   ```bash
-   # In server/.env
-   WORKER_THREADS=8
-   ```
-
-3. **Monitor container reuse**
+2. **Monitor container reuse**
    - Check `GET /api/queue-stats` for reuse rate
    - Aim for >80% reuse rate
    - Increase container TTL if reuse low
 
-4. **Check Docker resources**
+3. **Check Docker resources**
    - Ensure sufficient CPU/memory
    - Monitor with `docker stats`
    - Consider removing unused containers
 
-5. **Profile bottleneck**
+4. **Profile bottleneck**
    - Check `GET /api/admin/metrics`
    - Identify slowest component
    - Optimize or add resources

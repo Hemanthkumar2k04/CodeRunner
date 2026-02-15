@@ -14,7 +14,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Trash2, ArrowDownToLine, Send, Terminal as TerminalIcon, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { Trash2, ArrowDownToLine, Terminal as TerminalIcon, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ANSI to HTML converter instances for light and dark themes
@@ -84,6 +84,7 @@ export function Console({ isMinimized, onToggleMinimize }: ConsoleProps) {
   const [inputValue, setInputValue] = useState('');
   const [autoScroll, setAutoScroll] = useState(true);
   const scrollingRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+  const consoleInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
   // Select the appropriate ANSI converter based on theme
   const ansiConverter = theme === 'dark' ? darkAnsiConverter : lightAnsiConverter;
@@ -141,6 +142,14 @@ export function Console({ isMinimized, onToggleMinimize }: ConsoleProps) {
     },
     [handleSendInput]
   );
+
+  // Focus input when console area is clicked
+  const handleConsoleClick = useCallback((fileId: string) => {
+    const inputElem = consoleInputRefs.current[fileId];
+    if (inputElem) {
+      inputElem.focus();
+    }
+  }, []);
 
   const handleClearConsole = useCallback(() => {
     if (activeConsoleId) {
@@ -346,10 +355,11 @@ export function Console({ isMinimized, onToggleMinimize }: ConsoleProps) {
                       value={console.fileId}
                       className="flex-1 min-h-0 m-0 data-[state=active]:flex data-[state=active]:flex-col"
                     >
-                      {/* Output area */}
+                      {/* Output area - Click to focus input */}
                       <div
                         ref={(el) => { scrollingRefs.current[console.fileId] = el; }}
-                        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden font-mono text-sm"
+                        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden font-mono text-sm cursor-text"
+                        onClick={() => handleConsoleClick(console.fileId)}
                       >
                         {console.output.length === 0 ? (
                           <div className="flex flex-col items-center justify-center py-12 space-y-4">
@@ -359,7 +369,7 @@ export function Console({ isMinimized, onToggleMinimize }: ConsoleProps) {
                             </div>
                           </div>
                         ) : isActive && rowVirtualizer ? (
-                          <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
+                          <div style={{ height: `${rowVirtualizer.getTotalSize() + 28}px`, width: '100%', position: 'relative' }}>
                             {rowVirtualizer.getVirtualItems().map((virtualItem: any) => {
                               const entry = console.output[virtualItem.index];
                               return (
@@ -380,6 +390,23 @@ export function Console({ isMinimized, onToggleMinimize }: ConsoleProps) {
                                 </div>
                               );
                             })}
+                            {/* Inline prompt line at bottom */}
+                            {console.isRunning && (
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  top: rowVirtualizer.getTotalSize(),
+                                  left: 0,
+                                  width: '100%',
+                                  height: '28px',
+                                }}
+                                className="px-4 py-1 leading-relaxed flex items-center gap-1"
+                              >
+                                <span className="text-green-600 dark:text-green-400 font-bold">❯</span>
+                                <span className="text-foreground">{inputValue}</span>
+                                <span className="animate-pulse text-foreground">|</span>
+                              </div>
+                            )}
                           </div>
                         ) : !isActive ? null : (
                           // Fallback for non-virtualized display (if virtualizer fails)
@@ -392,43 +419,28 @@ export function Console({ isMinimized, onToggleMinimize }: ConsoleProps) {
                                 {renderOutput(entry.data, entry.type)}
                               </div>
                             ))}
+                            {/* Inline prompt line at bottom */}
+                            {console.isRunning && (
+                              <div className="leading-relaxed flex items-center gap-1">
+                                <span className="text-green-600 dark:text-green-400 font-bold">❯</span>
+                                <span className="text-foreground">{inputValue}</span>
+                                <span className="animate-pulse text-foreground">|</span>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
 
-                      {/* Input area */}
-                      <div className="flex items-center gap-3 p-3 border-t bg-muted/20 shrink-0">
-                        <div className="flex items-center gap-2 px-3 py-2 bg-background border rounded-lg flex-1">
-                          <span className="text-green-600 dark:text-green-400 text-sm font-bold">❯</span>
-                          <Input
-                            value={inputValue}
-                            onChange={(e) => setInputValue(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            placeholder={console.isRunning ? 'Type input and press Enter...' : 'Run code to enable input'}
-                            disabled={!console.isRunning}
-                            className="flex-1 bg-transparent border-0 placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 h-auto p-0"
-                          />
-                        </div>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className={cn(
-                                "h-9 w-9 rounded-lg transition-all",
-                                console.isRunning && inputValue.trim() 
-                                  ? "text-blue-600 dark:text-blue-400 hover:bg-blue-500/10" 
-                                  : "text-muted-foreground"
-                              )}
-                              onClick={handleSendInput}
-                              disabled={!console.isRunning || !inputValue.trim()}
-                            >
-                              <Send className="h-4 w-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Send input (Enter)</TooltipContent>
-                        </Tooltip>
-                      </div>
+                      {/* Hidden input - captures keyboard events */}
+                      <Input
+                        ref={(el) => { consoleInputRefs.current[console.fileId] = el; }}
+                        value={inputValue}
+                        onChange={(e) => setInputValue(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        disabled={!console.isRunning}
+                        className="absolute opacity-0 pointer-events-none"
+                        aria-hidden="true"
+                      />
                     </TabsContent>
                   );
                 })}
