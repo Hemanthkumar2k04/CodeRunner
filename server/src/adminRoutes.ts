@@ -67,7 +67,7 @@ router.get('/stats', adminAuth, async (req: Request, res: Response) => {
     try {
       const indexModule = await import('./index');
       if (indexModule.executionQueue) {
-        queueStats = indexModule.executionQueue.getStats();
+        queueStats = indexModule.executionQueue.getDetailedStats();
       }
     } catch (err) {
       // If we can't import, use default values

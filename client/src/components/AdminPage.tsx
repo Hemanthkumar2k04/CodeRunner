@@ -65,6 +65,10 @@ interface ServerStats {
     queued: number;
     active: number;
     maxConcurrent: number;
+    highPriorityQuota?: number;
+    highPriorityCounter?: number;
+    maxWaitTimeByPriority?: { [key: number]: number };
+    currentWaitTimeByPriority?: { [key: number]: number };
   };
   containers: {
     active: number;
@@ -601,6 +605,34 @@ export function AdminPage() {
                       <p className="text-xs text-muted-foreground">{stats.executionQueue.queued} queued / {stats.executionQueue.maxConcurrent || 10} max</p>
                     </div>
                     <Progress value={(stats.executionQueue.active / (stats.executionQueue.maxConcurrent || 10)) * 100} className="h-1.5 mt-3" />
+                    
+                    {/* Starvation Metrics */}
+                    {(stats.executionQueue.maxWaitTimeByPriority || stats.executionQueue.currentWaitTimeByPriority) && (
+                      <div className="mt-3 pt-3 border-t border-border">
+                        <p className="text-xs font-medium text-muted-foreground mb-1">Priority Wait Times</p>
+                        <div className="space-y-1">
+                          {Object.entries(stats.executionQueue.currentWaitTimeByPriority || {}).map(([priority, waitTime]) => {
+                            const waitSeconds = (waitTime / 1000).toFixed(1);
+                            const maxWait = stats.executionQueue.maxWaitTimeByPriority?.[Number(priority)];
+                            const maxWaitSeconds = maxWait ? (maxWait / 1000).toFixed(1) : 'N/A';
+                            const isStarving = waitTime > 10000; // Warn if > 10s
+                            return (
+                              <div key={priority} className="flex justify-between items-center text-xs">
+                                <span className="text-muted-foreground">Priority {priority}:</span>
+                                <span className={isStarving ? 'text-orange-500 font-medium' : ''}>
+                                  {waitSeconds}s <span className="text-muted-foreground">(max: {maxWaitSeconds}s)</span>
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {stats.executionQueue.highPriorityQuota && (
+                          <p className="text-xs text-muted-foreground mt-2">
+                            Quota: {stats.executionQueue.highPriorityQuota}:1 (counter: {stats.executionQueue.highPriorityCounter || 0})
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 

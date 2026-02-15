@@ -93,9 +93,9 @@ CodeRunner is a distributed code execution platform that safely executes user co
 
 ### 3. Execution Queue System
 
-**Location**: `server/src/workerPool.ts`
+**Location**: `server/src/index.ts` (ExecutionQueue class)
 
-The queue is the heart of CodeRunner's execution model.
+The queue is the heart of CodeRunner's execution model, managing concurrent code execution requests with priority-based scheduling and anti-starvation guarantees.
 
 **Architecture**:
 
@@ -107,6 +107,10 @@ ExecutionQueue {
   completedTasks: number     // Success counter
   failedTasks: number        // Error counter
   taskTimes: number[]        // Recent execution times
+  highPriorityCounter: number    // Tracks consecutive high-priority executions
+  maxWaitTimeByPriority: Map    // Longest wait time per priority level
+  highPriorityQuota: number     // Anti-starvation quota (default: 5)
+  maxBatchSize: number          // Event loop batch limit (default: 10)
 }
 
 interface QueuedTask {
@@ -120,20 +124,52 @@ interface QueuedTask {
 **Priority Levels**:
 | Source | Priority | Use Case |
 |--------|----------|----------|
-| WebSocket | 2 | User clicking "Run" |
+| WebSocket | 2 | User clicking "Run" (interactive) |
 | HTTP API | 1 | Programmatic execution |
-| Notebooks | 0 | Background kernel execution |
+| Notebooks | N/A | Direct execution via kernelManager (bypasses queue) |
 
-**Task Processing**:
+**Hybrid Scheduling with Anti-Starvation**:
+
+CodeRunner implements a quota-based hybrid scheduling policy to prevent indefinite starvation of low-priority tasks:
+
+1. **Standard Mode**: Selects highest priority task from queue (priority 2 > priority 1)
+2. **Anti-Starvation Mode**: After executing N high-priority tasks (default: 5), the scheduler guarantees selection of a low-priority task if one exists
+3. **Counter Reset**: After executing a low-priority task, the high-priority counter resets to 0
+
+**Configuration**:
+- `HIGH_PRIORITY_QUOTA=5`: Execute 5 high-priority tasks before 1 low-priority task
+- Higher values favor interactive users, lower values provide more fairness
+- Recommended range: 3-7
+
+**Starvation Prevention Guarantee**:
+- Worst-case wait time for priority-1 tasks: `quota × avg_task_duration × num_priority_2_in_queue`
+- Example: With quota=5, avg task time=2s, and 20 priority-2 tasks queued, priority-1 task waits at most ~40s
+
+**Task Processing with Event Loop Yielding**:
 
 1. Client sends execution request via WebSocket or HTTP
-2. Task is added to queue with appropriate priority
-3. Queue sorts tasks by priority (descending), then FIFO
-4. When concurrency slots available, task is executed
-5. Task execution is non-blocking (fire-and-forget pattern)
-6. On completion, metrics are recorded and next task is processed
+2. Task is added to queue with appropriate priority (binary search insertion: O(log n))
+3. `processQueue()` is called to start scheduling
+4. **Batch Processing**: Processes up to `maxBatchSize` (10) tasks per event loop tick
+5. **Task Selection**: Hybrid algorithm selects task based on priority and quota
+6. **Wait Tracking**: Records wait time before execution for starvation metrics
+7. Task execution is non-blocking (fire-and-forget pattern)
+8. On completion, `setImmediate()` schedules next batch on next event loop tick
+
+**Event Loop Safety**:
+
+To prevent event loop starvation during high load:
+- **Batch Limit**: Maximum 10 task starts per `processQueue()` call
+- **Deferred Scheduling**: Uses `setImmediate()` instead of synchronous recursion
+- **Benefit**: Allows I/O, timers, and WebSocket messages to be processed between batches
 
 **Key Optimization**: Tasks are executed without `await`, allowing true parallel execution without blocking the event loop.
+
+**Starvation Metrics** (exposed via `/admin/stats`):
+- `maxWaitTimeByPriority`: Longest wait time ever recorded for each priority
+- `currentWaitTimeByPriority`: Current wait time of oldest task per priority
+- `highPriorityCounter`: Progress toward next low-priority task selection
+- Admin dashboard displays warnings when wait times exceed 10 seconds
 
 ### 4. Container Pool Management
 

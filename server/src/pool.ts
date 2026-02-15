@@ -118,8 +118,14 @@ class SessionContainerPool {
                 cleanedCount++;
                 this.metrics.containersDeleted++;
               } catch (e: any) {
-                console.warn(`[Pool] Failed to delete expired container ${containerId.substring(0, 12)}: ${e.message}`);
-                this.metrics.cleanupErrors++;
+                // "already in progress" or "not found" are not real errors
+                if (e.message?.includes('already in progress') || e.message?.includes('No such container') || e.stderr?.includes('already in progress') || e.stderr?.includes('No such container')) {
+                  cleanedCount++;
+                  this.metrics.containersDeleted++;
+                } else {
+                  console.warn(`[Pool] Failed to delete expired container ${containerId.substring(0, 12)}: ${e.message}`);
+                  this.metrics.cleanupErrors++;
+                }
               }
             }
           }
@@ -171,7 +177,13 @@ class SessionContainerPool {
               this.metrics.containersDeleted++;
               cleanedCount++;
             } catch (e: any) {
-              console.warn(`[Pool] Failed to remove orphaned container ${id}: ${e.message}`);
+              // Concurrent removal or already gone — treat as success
+              if (e.message?.includes('already in progress') || e.message?.includes('No such container') || e.stderr?.includes('already in progress') || e.stderr?.includes('No such container')) {
+                this.metrics.containersDeleted++;
+                cleanedCount++;
+              } else {
+                console.warn(`[Pool] Failed to remove orphaned container ${id}: ${e.message}`);
+              }
             }
           }
         }
@@ -435,8 +447,13 @@ class SessionContainerPool {
           await execAsync(`docker rm -fv ${containerId}`, { timeout: config.docker.commandTimeout });
           this.metrics.containersDeleted++;
         } catch (individualError: any) {
-          console.error(`[Pool] Failed to delete container ${containerId.substring(0, 12)}:`, individualError.message);
-          this.metrics.cleanupErrors++;
+          // Concurrent removal or already gone — treat as success
+          if (individualError.message?.includes('already in progress') || individualError.message?.includes('No such container') || individualError.stderr?.includes('already in progress') || individualError.stderr?.includes('No such container')) {
+            this.metrics.containersDeleted++;
+          } else {
+            console.error(`[Pool] Failed to delete container ${containerId.substring(0, 12)}:`, individualError.message);
+            this.metrics.cleanupErrors++;
+          }
         }
       }
     }

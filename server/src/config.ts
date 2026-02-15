@@ -71,6 +71,9 @@ export const config = {
     maxQueueSize: parseInt(process.env.MAX_QUEUE_SIZE || '200', 10),
     queueTimeout: parseInt(process.env.QUEUE_TIMEOUT || '60000', 10), // ms
     enablePriorityQueue: process.env.ENABLE_PRIORITY_QUEUE !== 'false',
+    // Anti-starvation: Execute N high-priority tasks before 1 low-priority task
+    // Prevents indefinite starvation of API requests when WebSocket traffic is heavy
+    highPriorityQuota: parseInt(process.env.HIGH_PRIORITY_QUOTA || '5', 10),
   },
 
   // === Container Runtime Images ===

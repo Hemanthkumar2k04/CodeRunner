@@ -192,11 +192,17 @@ class ExecutionQueue {
   private maxTaskTimeHistory: number = 100;
   private maxQueueSize: number;
   private queueTimeout: number;
+  // Anti-starvation tracking
+  private highPriorityCounter: number = 0; // Consecutive high-priority tasks executed
+  private maxWaitTimeByPriority: Map<number, number> = new Map(); // Longest wait per priority
+  private highPriorityQuota: number; // Execute N high-priority before 1 low-priority
+  private maxBatchSize: number = 10; // Limit iterations per event loop tick
 
-  constructor(maxConcurrent: number, maxQueueSize?: number, queueTimeout?: number) {
+  constructor(maxConcurrent: number, maxQueueSize?: number, queueTimeout?: number, highPriorityQuota?: number) {
     this.maxConcurrent = maxConcurrent;
     this.maxQueueSize = maxQueueSize || parseInt(process.env.MAX_QUEUE_SIZE || '200', 10);
     this.queueTimeout = queueTimeout || parseInt(process.env.QUEUE_TIMEOUT || '60000', 10);
+    this.highPriorityQuota = highPriorityQuota || parseInt(process.env.HIGH_PRIORITY_QUOTA || '5', 10);
   }
 
   enqueue(task: () => Promise<void>, priority: number = 0, language?: string): void {
@@ -245,12 +251,53 @@ class ExecutionQueue {
       console.log(`[ExecutionQueue] Removed ${initialQueueLength - this.queue.length} expired tasks from queue`);
     }
 
-    // Process tasks without blocking - key fix for concurrency
-    while (this.queue.length > 0 && this.activeCount < this.maxConcurrent) {
-      const queuedTask = this.queue.shift();
+    // Batch processing with event loop yielding to prevent starvation
+    // Process up to maxBatchSize tasks per tick
+    let processed = 0;
+    while (this.queue.length > 0 && this.activeCount < this.maxConcurrent && processed < this.maxBatchSize) {
+      // Hybrid selection: enforce high-priority quota for anti-starvation
+      let selectedIndex = -1;
+      let queuedTask: QueuedTask | undefined;
+
+      // If we've hit the quota, look for a lower-priority task
+      if (this.highPriorityCounter >= this.highPriorityQuota) {
+        // Find the highest priority task that's NOT the highest priority in queue
+        const highestPriority = this.queue[0].priority; // Queue is sorted by priority desc
+        
+        for (let i = 0; i < this.queue.length; i++) {
+          if (this.queue[i].priority < highestPriority) {
+            selectedIndex = i;
+            queuedTask = this.queue[i];
+            this.highPriorityCounter = 0; // Reset counter
+            console.log(`[ExecutionQueue] Anti-starvation: Selected priority ${queuedTask.priority} task (quota reached: ${this.highPriorityQuota})`);
+            break;
+          }
+        }
+      }
+
+      // If no low-priority task found (or quota not reached), select highest priority (standard behavior)
+      if (selectedIndex === -1) {
+        selectedIndex = 0;
+        queuedTask = this.queue[0];
+        // Only increment counter if this is actually a high-priority task
+        if (this.queue.length > 1 && this.queue[1].priority < queuedTask.priority) {
+          this.highPriorityCounter++;
+        }
+      }
+
+      // Remove selected task from queue
+      this.queue.splice(selectedIndex, 1);
       if (!queuedTask) break;
 
+      // Track wait time for starvation metrics
+      const waitTime = now - queuedTask.timestamp;
+      const currentMaxWait = this.maxWaitTimeByPriority.get(queuedTask.priority) || 0;
+      if (waitTime > currentMaxWait) {
+        this.maxWaitTimeByPriority.set(queuedTask.priority, waitTime);
+      }
+
       this.activeCount++;
+      processed++;
       const startTime = Date.now();
 
       // Execute task asynchronously WITHOUT await - this enables true parallelism
@@ -269,12 +316,43 @@ class ExecutionQueue {
         })
         .finally(() => {
           this.activeCount--;
-          // Continue processing remaining tasks
+          // Use setImmediate to yield to event loop before processing next batch
+          // This prevents event loop starvation during high load
           if (this.queue.length > 0) {
-            this.processQueue();
+            setImmediate(() => this.processQueue());
           }
         });
     }
+  }
+
+  getStarvationStats() {
+    const now = Date.now();
+    const currentWaitTimeByPriority: { [key: number]: number } = {};
+
+    // Calculate current wait time for oldest task of each priority in queue
+    const priorityOldestTask = new Map<number, number>();
+    this.queue.forEach(qt => {
+      const existingTimestamp = priorityOldestTask.get(qt.priority);
+      if (!existingTimestamp || qt.timestamp < existingTimestamp) {
+        priorityOldestTask.set(qt.priority, qt.timestamp);
+      }
+    });
+
+    // Convert to wait times
+    priorityOldestTask.forEach((timestamp, priority) => {
+      currentWaitTimeByPriority[priority] = now - timestamp;
+    });
+
+    // Convert Map to plain object for serialization
+    const maxWaitTimeByPriority: { [key: number]: number } = {};
+    this.maxWaitTimeByPriority.forEach((waitTime, priority) => {
+      maxWaitTimeByPriority[priority] = waitTime;
+    });
+
+    return {
+      maxWaitTimeByPriority,
+      currentWaitTimeByPriority,
+    };
   }
 
   getStats() {
@@ -295,6 +373,7 @@ class ExecutionQueue {
 
   getDetailedStats() {
     const stats = this.getStats();
+    const starvationStats = this.getStarvationStats();
     const queuedByLanguage: { [key: string]: number } = {};
 
     this.queue.forEach(qt => {
@@ -309,6 +388,10 @@ class ExecutionQueue {
       queueUtilization: this.maxConcurrent > 0
         ? Math.round((this.activeCount / this.maxConcurrent) * 100)
         : 0,
+      highPriorityQuota: this.highPriorityQuota,
+      highPriorityCounter: this.highPriorityCounter,
+      maxWaitTimeByPriority: starvationStats.maxWaitTimeByPriority,
+      currentWaitTimeByPriority: starvationStats.currentWaitTimeByPriority,
     };
   }
 }
@@ -316,7 +399,8 @@ class ExecutionQueue {
 const executionQueue = new ExecutionQueue(
   config.sessionContainers.maxConcurrentSessions,
   config.executionQueue.maxQueueSize,
-  config.executionQueue.queueTimeout
+  config.executionQueue.queueTimeout,
+  config.executionQueue.highPriorityQuota
 );
 
 // Export for admin routes
@@ -756,6 +840,10 @@ io.on('connection', (socket) => {
 
     // Clean up all kernels for this socket
     await kernelManager.shutdownSocketKernels(socket.id);
+
+    // Brief pause to let Docker daemon finish removing container endpoints
+    // before we attempt to delete the network (docker rm -fv is async internally)
+    await new Promise(resolve => setTimeout(resolve, 200));
 
     // Clean up session network
     await deleteSessionNetwork(socket.id).catch(err =>

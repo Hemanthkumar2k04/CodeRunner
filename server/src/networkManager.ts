@@ -151,6 +151,12 @@ class SubnetAllocator {
 const subnetAllocator = new SubnetAllocator();
 
 /**
+ * Guard flags to prevent concurrent Docker daemon operations that conflict
+ */
+let isPruneRunning = false;
+let isEmergencyCleanupRunning = false;
+
+/**
  * Check if a Docker network exists
  */
 export async function networkExists(networkName: string): Promise<boolean> {
@@ -314,27 +320,142 @@ export async function createSessionNetwork(sessionId: string): Promise<string> {
 }
 
 /**
- * Delete a Docker network and release its subnet
+ * Helper: Inspect a network and return connected container IDs.
+ * Returns empty array if the network doesn't exist or inspection fails.
+ */
+async function getNetworkContainerIds(networkName: string): Promise<string[]> {
+  try {
+    const { stdout } = await safeExecAsync(
+      `docker network inspect ${networkName} -f "{{json .Containers}}"`,
+      { timeout: 5000 }
+    );
+    const json = stdout.trim();
+    if (json && json !== '{}' && json !== 'null') {
+      return Object.keys(JSON.parse(json));
+    }
+  } catch {
+    // Network gone or unparseable — nothing to disconnect
+  }
+  return [];
+}
+
+/**
+ * Helper: Force-remove containers and disconnect any remaining endpoints
+ * from the network. Handles containers in intermediate "being removed" states
+ * by trying both `docker rm -f` and `docker network disconnect -f`.
+ */
+async function forceDetachContainers(networkName: string): Promise<number> {
+  const containerIds = await getNetworkContainerIds(networkName);
+  if (containerIds.length === 0) return 0;
+
+  console.log(`[NetworkManager] Force-detaching ${containerIds.length} container(s) from ${networkName}`);
+  let detached = 0;
+
+  await Promise.all(containerIds.map(async (cid) => {
+    // 1. Force-remove the container itself (handles the common case where
+    //    cleanupSession's `docker rm -fv` was accepted but Docker hasn't
+    //    finished removing the container/endpoint yet).
+    try {
+      await execAsync(`docker rm -f ${cid}`, { timeout: 5000 });
+    } catch {
+      // Container may already be gone – continue to disconnect
+    }
+
+    // 2. Force-disconnect from network (covers the case where the container
+    //    process is still lingering or belongs to another session).
+    try {
+      await execAsync(`docker network disconnect -f ${networkName} ${cid}`, { timeout: 5000 });
+    } catch {
+      // Endpoint may already be gone
+    }
+
+    detached++;
+  }));
+
+  console.log(`[NetworkManager] Detached ${detached}/${containerIds.length} container(s) from ${networkName}`);
+  return detached;
+}
+
+/**
+ * Delete a Docker network and release its subnet.
+ *
+ * Strategy: on each retry attempt we re-inspect the network for connected
+ * containers and force-remove/disconnect them before attempting `docker
+ * network rm`. This handles the common race where `docker rm -fv` has been
+ * accepted but Docker hasn't finished cleaning up the network endpoint.
  */
 export async function deleteSessionNetwork(sessionId: string): Promise<void> {
   const networkName = `${config.network.sessionNetworkPrefix}${sessionId}`;
+  const maxAttempts = 4;
   
   try {
-    // Get subnet before deleting
-    const { stdout } = await execAsync(`docker network inspect ${networkName} --format "{{range .IPAM.Config}}{{.Subnet}}{{end}}"`, { timeout: 5000 });
-    const subnet = stdout.trim();
-    
-    console.log(`[NetworkManager] Deleting network: ${networkName} (subnet: ${subnet})`);
-    await execAsync(`docker network rm ${networkName}`, { timeout: config.docker.commandTimeout });
-    networkMetrics.networksDeleted++;
-    console.log(`[NetworkManager] Network deleted: ${networkName}`);
-    
-    // Release subnet back to pool
-    if (subnet && subnet !== '') {
-      subnetAllocator.releaseSubnet(subnet);
-      console.log(`[NetworkManager] Subnet ${subnet} released back to pool`);
+    // Fetch subnet once (for release after successful deletion)
+    let subnet = '';
+    try {
+      const subnetResult = await safeExecAsync(
+        `docker network inspect ${networkName} --format "{{range .IPAM.Config}}{{.Subnet}}{{end}}"`,
+        { timeout: 5000 }
+      );
+      subnet = subnetResult.stdout.trim();
+    } catch {
+      // Network may already be gone
     }
+
+    let lastError: any = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      // Force-detach any containers still connected to this network
+      const detached = await forceDetachContainers(networkName);
+
+      // If we detached containers, give Docker daemon a moment to process
+      if (detached > 0) {
+        await new Promise(resolve => setTimeout(resolve, 300 * attempt));
+      }
+
+      try {
+        await execAsync(`docker network rm ${networkName}`, { timeout: config.docker.commandTimeout });
+        networkMetrics.networksDeleted++;
+        console.log(`[NetworkManager] Network deleted: ${networkName}`);
+
+        // Release subnet back to pool
+        if (subnet) {
+          subnetAllocator.releaseSubnet(subnet);
+          console.log(`[NetworkManager] Subnet ${subnet} released back to pool`);
+        }
+        return; // Success!
+      } catch (rmError: any) {
+        lastError = rmError;
+        const msg = rmError.message || '';
+        const err = rmError.stderr || '';
+
+        // Network already gone — success
+        if (msg.includes('not found') || msg.includes('No such network') ||
+            err.includes('not found') || err.includes('No such network')) {
+          return;
+        }
+
+        // Active endpoints — retry with increasing backoff
+        if (msg.includes('active endpoints') || err.includes('active endpoints')) {
+          if (attempt < maxAttempts) {
+            console.warn(`[NetworkManager] Network ${networkName} still has active endpoints (attempt ${attempt}/${maxAttempts}), will re-detach and retry...`);
+            await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+            continue;
+          }
+        }
+
+        // Other error — fail immediately
+        break;
+      }
+    }
+
+    // All retries failed
+    throw lastError;
   } catch (error: any) {
+    // Network already gone — not an error
+    if (error?.message?.includes('not found') || error?.message?.includes('No such network') ||
+        error?.stderr?.includes('not found') || error?.stderr?.includes('No such network')) {
+      return;
+    }
     console.error(`[NetworkManager] Failed to delete network ${networkName}:`, error.message);
     networkMetrics.cleanupErrors++;
     // Don't throw - network might already be deleted or not exist
@@ -388,14 +509,21 @@ export async function cleanupOrphanedNetworks(maxAgeMs: number = 300000): Promis
             )
           ]);
           
-          // Skip if interrupted or empty response
+          // Skip if interrupted, empty response, or network was already deleted
           if (!inspectOutput.stdout.trim() || !containersOutput.stdout.trim()) {
             return;
+          }
+          if (inspectOutput.stderr?.includes('not found') || containersOutput.stderr?.includes('not found')) {
+            return; // Network was deleted by another cleanup task
           }
           
           const createdAt = new Date(inspectOutput.stdout.trim()).getTime();
           const ageMs = now - createdAt;
           const containerCount = parseInt(containersOutput.stdout.trim(), 10);
+          
+          if (isNaN(containerCount) || isNaN(createdAt)) {
+            return; // Malformed response, skip
+          }
           
           // Check if network should be cleaned up
           if (ageMs > effectiveMaxAge && containerCount === 0) {
@@ -404,7 +532,12 @@ export async function cleanupOrphanedNetworks(maxAgeMs: number = 300000): Promis
             await deleteSessionNetwork(sessionId);
             cleanedCount++;
           }
-        } catch (error) {
+        } catch (error: any) {
+          // Gracefully handle networks that disappeared during cleanup (race condition)
+          if (error?.message?.includes('not found') || error?.stderr?.includes('not found')) {
+            // Network was already deleted — not an error
+            return;
+          }
           console.error(`[NetworkManager] Failed to check/cleanup network ${networkName}:`, error);
           networkMetrics.cleanupErrors++;
         }
@@ -438,16 +571,38 @@ export async function cleanupOrphanedNetworks(maxAgeMs: number = 300000): Promis
  * Used when subnet exhaustion is detected
  */
 export async function emergencyNetworkCleanup(): Promise<void> {
+  // Prevent concurrent emergency cleanups — Docker daemon rejects concurrent prune ops
+  if (isEmergencyCleanupRunning) {
+    console.log('[NetworkManager] Emergency cleanup already in progress, skipping');
+    return;
+  }
+  isEmergencyCleanupRunning = true;
   try {
     console.log('[NetworkManager] ⚠️ EMERGENCY: Pruning all unused CodeRunner networks');
     
     // Docker network prune removes all unused networks matching filter
-    const { stdout } = await execAsync(
-      `docker network prune -f --filter "label=${config.network.networkLabel}"`,
-      { timeout: 30000 }
-    );
-    
-    console.log(`[NetworkManager] Emergency cleanup result: ${stdout.trim()}`);
+    // Guard against concurrent prune operations
+    if (isPruneRunning) {
+      console.log('[NetworkManager] A prune operation is already running, skipping prune step');
+    } else {
+      isPruneRunning = true;
+      try {
+        const { stdout } = await execAsync(
+          `docker network prune -f --filter "label=${config.network.networkLabel}"`,
+          { timeout: 30000 }
+        );
+        console.log(`[NetworkManager] Emergency cleanup result: ${stdout.trim()}`);
+      } catch (pruneError: any) {
+        // Handle "a prune operation is already running" gracefully
+        if (pruneError?.stderr?.includes('prune operation is already running')) {
+          console.log('[NetworkManager] Docker prune already running, continuing with manual cleanup');
+        } else {
+          console.error('[NetworkManager] Prune failed:', pruneError.message);
+        }
+      } finally {
+        isPruneRunning = false;
+      }
+    }
     
     // Additional manual cleanup of session networks with no containers
     const networks = await listSessionNetworks();
@@ -459,21 +614,24 @@ export async function emergencyNetworkCleanup(): Promise<void> {
           `docker network inspect ${networkName} --format "{{len .Containers}}"`,
           { timeout: 5000 }
         );
-        const containerCount = parseInt(containersOutput.trim(), 10);
+        const count = parseInt(containersOutput.trim(), 10);
         
-        if (containerCount === 0) {
+        if (!isNaN(count) && count === 0) {
           const sessionId = networkName.replace(config.network.sessionNetworkPrefix, '');
           await deleteSessionNetwork(sessionId);
           manualCleanupCount++;
         }
-      } catch (error) {
-        // Ignore errors during emergency cleanup
+      } catch (error: any) {
+        // Ignore "not found" — network was already cleaned up
+        // Ignore other errors during emergency cleanup
       }
     }
     
     console.log(`[NetworkManager] Emergency cleanup: manually removed ${manualCleanupCount} additional networks`);
   } catch (error) {
     console.error('[NetworkManager] Emergency cleanup failed:', error);
+  } finally {
+    isEmergencyCleanupRunning = false;
   }
 }
 
@@ -576,35 +734,13 @@ export async function aggressiveBulkNetworkCleanup(): Promise<number> {
     const networkIds = networksResult.stdout.trim().split('\n').filter(id => id.trim());
     console.log(`[NetworkManager] Found ${networkIds.length} networks for bulk removal`);
 
-    // Step 2: Force disconnect and remove all containers in these networks
-    console.log('[NetworkManager] Disconnecting containers from networks...');
-    for (const networkId of networkIds) {
-      try {
-        // Get containers in this network
-        const containersResult = await safeExecAsync(
-          `docker network inspect ${networkId} --format '{{range .Containers}}{{.Name}} {{end}}'`,
-          { timeout: 5000 }
-        );
+    // Step 2: Force-remove containers and disconnect from all networks
+    console.log('[NetworkManager] Force-detaching containers from networks...');
+    await Promise.all(
+      networkIds.map(networkId => forceDetachContainers(networkId).catch(() => {}))
+    );
 
-        if (containersResult.stdout.trim()) {
-          const containerNames = containersResult.stdout.trim().split(' ').filter(n => n.trim());
-          
-          // Force disconnect each container
-          for (const containerName of containerNames) {
-            await safeExecAsync(
-              `docker network disconnect -f ${networkId} ${containerName}`,
-              { timeout: 5000 }
-            ).catch(() => {
-              // Ignore errors - container might already be gone
-            });
-          }
-        }
-      } catch (error) {
-        // Continue even if this network fails
-      }
-    }
-
-    // Step 3: Brief pause for Docker to process disconnections
+    // Step 3: Brief pause for Docker to process removals
     await new Promise(resolve => setTimeout(resolve, 2000));
 
     // Step 4: Bulk remove all networks in parallel batches
