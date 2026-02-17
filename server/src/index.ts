@@ -714,10 +714,10 @@ io.on('connection', (socket) => {
   });
 
   // Load test runner handlers
-  socket.on('loadtest:start', async (data: { intensity: string }) => {
+  socket.on('loadtest:start', async (data: { intensity: string; languages?: string[] }) => {
     console.log('[WebSocket] Received loadtest:start event:', data);
     try {
-      const testId = await startLoadTest(data.intensity);
+      const testId = await startLoadTest(data.intensity, data.languages);
       const testRunner = getTestRunner(testId);
 
       if (!testRunner) {

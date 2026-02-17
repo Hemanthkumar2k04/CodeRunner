@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # CodeRunner Performance Load Test Runner
-# Usage: ./run-load-tests.sh [light|moderate|heavy]
+# Usage: ./run-load-tests.sh [light|moderate|heavy] [languages]
 
 set -e
 
@@ -14,15 +14,25 @@ NC='\033[0m' # No Color
 # Default intensity
 INTENSITY="${1:-moderate}"
 
+# Optional languages parameter
+LANGUAGES="${2:-}"
+
 # Validate intensity
 if [[ ! "$INTENSITY" =~ ^(light|moderate|heavy)$ ]]; then
     echo -e "${RED}Error: Invalid intensity level '$INTENSITY'${NC}"
-    echo "Usage: $0 [light|moderate|heavy]"
+    echo "Usage: $0 [light|moderate|heavy] [languages]"
     echo ""
     echo "Intensity levels:"
     echo "  light    - 10 concurrent connections, 30 seconds"
     echo "  moderate - 50 concurrent connections, 60 seconds (default)"
     echo "  heavy    - 100 concurrent connections, 90 seconds"
+    echo ""
+    echo "Languages (comma-separated, optional):"
+    echo "  python,javascript,java,cpp (default: all)"
+    echo ""
+    echo "Examples:"
+    echo "  $0 moderate python"
+    echo "  $0 heavy python,javascript"
     exit 1
 fi
 
@@ -47,9 +57,16 @@ fi
 
 # Run the tests
 echo -e "${GREEN}Starting load tests with ${INTENSITY} intensity...${NC}"
+if [ -n "$LANGUAGES" ]; then
+    echo -e "${GREEN}Testing languages: ${LANGUAGES}${NC}"
+fi
 echo ""
 
-node server/tests/run-tests.js "$INTENSITY"
+if [ -n "$LANGUAGES" ]; then
+    node server/tests/run-tests.js "$INTENSITY" "--languages=$LANGUAGES"
+else
+    node server/tests/run-tests.js "$INTENSITY"
+fi
 
 exit_code=$?
 

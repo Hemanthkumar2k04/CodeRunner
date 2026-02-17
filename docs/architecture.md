@@ -77,7 +77,7 @@ CodeRunner is a distributed code execution platform that safely executes user co
 **Recent Enhancements (Feb 2026)**:
 
 - Removed HomePage and LabPage components, routing now defaults to `/editor`
-- Implemented collapsible sidebar for better mobile/small screen experience  
+- Implemented collapsible sidebar for better mobile/small screen experience
 - Admin dashboard enhanced with real-time system metrics (CPU, memory, uptime)
 
 ### 2. Backend Server
@@ -407,15 +407,15 @@ All errors are streamed to client via WebSocket with descriptive messages.
 
 ```typescript
 interface SystemMetrics {
-  cpu: number;           // CPU usage percentage
-  memory: number;        // Memory usage in MB
-  uptime: number;        // Uptime in seconds
-  timestamp: number;     // Metric collection time
+  cpu: number; // CPU usage percentage
+  memory: number; // Memory usage in MB
+  uptime: number; // Uptime in seconds
+  timestamp: number; // Metric collection time
 }
 
 interface AdminMetrics {
   requestCount: number;
-  requestLatencies: number[];  // Capped at daily limit
+  requestLatencies: number[]; // Capped at daily limit
   containerMetrics: ContainerMetrics;
   networkMetrics: NetworkMetrics;
   systemMetrics: SystemMetrics;

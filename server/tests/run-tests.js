@@ -17,6 +17,9 @@ const intensity = intensityArg || 'moderate';
 const serverArg = args.find(arg => arg.startsWith('--server='));
 const serverUrl = serverArg ? serverArg.split('=')[1] : 'http://localhost:3000';
 
+const languagesArg = args.find(arg => arg.startsWith('--languages='));
+const languages = languagesArg ? languagesArg.split('=')[1].split(',').map(l => l.trim()) : undefined;
+
 /**
  * Main execution function
  */
@@ -28,15 +31,18 @@ async function main() {
     console.log(`  Intensity: ${intensity}`);
     console.log(`  Server: ${serverUrl}`);
     console.log(`  Strategy: stratified (simple + complex per language)`);
+    if (languages) {
+        console.log(`  Languages: ${languages.join(', ')}`);
+    }
     console.log('\n' + '-'.repeat(60));
     
     // Step 1: Select programs
     console.log('\nStep 1: Selecting test programs...');
-    const programs = selectPrograms('stratified');
+    const programs = selectPrograms('stratified', languages);
     
-    const languages = Object.keys(programs);
-    console.log(`Selected programs for ${languages.length} languages:`);
-    languages.forEach(lang => {
+    const languageKeys = Object.keys(programs);
+    console.log(`Selected programs for ${languageKeys.length} language(s):`);
+    languageKeys.forEach(lang => {
         const p = programs[lang];
         console.log(`  ${lang}:`);
         console.log(`    Simple: ${p.simple.name}`);

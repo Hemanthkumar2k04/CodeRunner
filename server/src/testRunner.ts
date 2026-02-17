@@ -21,16 +21,18 @@ interface TestProgress {
 class TestRunner extends EventEmitter {
     public readonly id: string;
     public readonly intensity: string;
+    public readonly languages?: string[];
     public startTime: number;
     public endTime?: number;
     public status: 'running' | 'completed' | 'failed';
     public reportId?: string;
     private process?: any;
 
-    constructor(id: string, intensity: string) {
+    constructor(id: string, intensity: string, languages?: string[]) {
         super();
         this.id = id;
         this.intensity = intensity;
+        this.languages = languages;
         this.startTime = Date.now();
         this.status = 'running';
     }
@@ -38,7 +40,12 @@ class TestRunner extends EventEmitter {
     async run(): Promise<void> {
         const scriptPath = path.join(__dirname, '../tests/run-tests.js');
         
-        this.process = spawn('node', [scriptPath, this.intensity], {
+        const args = [scriptPath, this.intensity];
+        if (this.languages && this.languages.length > 0) {
+            args.push(`--languages=${this.languages.join(',')}`);
+        }
+        
+        this.process = spawn('node', args, {
             cwd: path.join(__dirname, '../..'),
             env: process.env
         });
@@ -140,6 +147,7 @@ class TestRunner extends EventEmitter {
  */
 export async function startLoadTest(
     intensity: string = 'moderate',
+    languages?: string[],
     socketId?: string
 ): Promise<string> {
     // Validate intensity
@@ -147,11 +155,20 @@ export async function startLoadTest(
         throw new Error(`Invalid intensity: ${intensity}`);
     }
 
+    // Validate languages
+    const validLanguages = ['python', 'javascript', 'java', 'cpp'];
+    if (languages && languages.length > 0) {
+        const invalidLangs = languages.filter(lang => !validLanguages.includes(lang));
+        if (invalidLangs.length > 0) {
+            throw new Error(`Invalid languages: ${invalidLangs.join(', ')}`);
+        }
+    }
+
     // Generate test ID
     const testId = `test_${Date.now()}_${Math.random().toString(36).substring(7)}`;
     
     // Create test runner
-    const runner = new TestRunner(testId, intensity);
+    const runner = new TestRunner(testId, intensity, languages);
     testRunners.set(testId, runner);
 
     // Start test asynchronously

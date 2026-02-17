@@ -67,12 +67,22 @@ function getLanguageExtension(language) {
 /**
  * Select programs using stratified strategy
  * Picks one simple (complexity 1-2) and one complex (complexity 5-6) per language
+ * @param {string[]} [languages] - Optional array of languages to test (default: all)
  * @returns {Object} Map of language to {simple, complex} programs
  */
-function selectStratified() {
+function selectStratified(languages) {
     const result = {};
     
-    for (const language of LANGUAGES) {
+    // Filter languages if specified
+    const langsToTest = languages && languages.length > 0 ? languages : LANGUAGES;
+    
+    for (const language of langsToTest) {
+        // Validate language
+        if (!LANGUAGES.includes(language)) {
+            console.warn(`Invalid language: ${language}. Skipping.`);
+            continue;
+        }
+        
         const programs = readProgramsForLanguage(language);
         
         if (programs.length === 0) {
@@ -104,12 +114,22 @@ function selectStratified() {
 
 /**
  * Select one random program per language
+ * @param {string[]} [languages] - Optional array of languages to test (default: all)
  * @returns {Object} Map of language to program
  */
-function selectRandom() {
+function selectRandom(languages) {
     const result = {};
     
-    for (const language of LANGUAGES) {
+    // Filter languages if specified
+    const langsToTest = languages && languages.length > 0 ? languages : LANGUAGES;
+    
+    for (const language of langsToTest) {
+        // Validate language
+        if (!LANGUAGES.includes(language)) {
+            console.warn(`Invalid language: ${language}. Skipping.`);
+            continue;
+        }
+        
         const programs = readProgramsForLanguage(language);
         
         if (programs.length === 0) {
@@ -126,12 +146,22 @@ function selectRandom() {
 
 /**
  * Select all programs for all languages
+ * @param {string[]} [languages] - Optional array of languages to test (default: all)
  * @returns {Object} Map of language to array of programs
  */
-function selectAll() {
+function selectAll(languages) {
     const result = {};
     
-    for (const language of LANGUAGES) {
+    // Filter languages if specified
+    const langsToTest = languages && languages.length > 0 ? languages : LANGUAGES;
+    
+    for (const language of langsToTest) {
+        // Validate language
+        if (!LANGUAGES.includes(language)) {
+            console.warn(`Invalid language: ${language}. Skipping.`);
+            continue;
+        }
+        
         result[language] = readProgramsForLanguage(language);
     }
     
@@ -141,16 +171,17 @@ function selectAll() {
 /**
  * Main selection function
  * @param {string} strategy - 'stratified', 'random', or 'all'
+ * @param {string[]} [languages] - Optional array of languages to test
  * @returns {Object} Selected programs
  */
-function selectPrograms(strategy = 'stratified') {
+function selectPrograms(strategy = 'stratified', languages) {
     switch (strategy) {
         case 'stratified':
-            return selectStratified();
+            return selectStratified(languages);
         case 'random':
-            return selectRandom();
+            return selectRandom(languages);
         case 'all':
-            return selectAll();
+            return selectAll(languages);
         default:
             throw new Error(`Unknown strategy: ${strategy}`);
     }

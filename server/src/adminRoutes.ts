@@ -245,18 +245,26 @@ router.get('/history', adminAuth, (req: Request, res: Response) => {
 router.post('/run-load-test', adminAuth, async (req: Request, res: Response) => {
   try {
     const intensity = (req.query.intensity as string) || 'moderate';
+    const languagesParam = req.query.languages as string;
+    const languages = languagesParam ? languagesParam.split(',').map(l => l.trim()) : undefined;
 
     if (!['light', 'moderate', 'heavy'].includes(intensity)) {
       return res.status(400).json({ error: 'Invalid intensity. Must be: light, moderate, or heavy' });
     }
 
+    const validLanguages = ['python', 'javascript', 'java', 'cpp'];
+    if (languages && languages.some(lang => !validLanguages.includes(lang))) {
+      return res.status(400).json({ error: 'Invalid language. Must be: python, javascript, java, or cpp' });
+    }
+
     // Dynamic import to avoid circular dependencies
     const { startLoadTest } = await import('./testRunner');
-    const testId = await startLoadTest(intensity);
+    const testId = await startLoadTest(intensity, languages);
 
     res.json({
       testId,
       intensity,
+      languages: languages || validLanguages,
       status: 'started',
       message: 'Load test started successfully'
     });
