@@ -1,27 +1,13 @@
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import { config } from './config';
-
-const execAsync = promisify(exec);
-
-/**
- * Safe exec wrapper that handles SIGINT gracefully during cleanup
- */
-async function safeExecAsync(command: string, options: any = {}): Promise<{ stdout: string; stderr: string }> {
-  try {
-    const result = await execAsync(command, options);
-    return {
-      stdout: result.stdout.toString(),
-      stderr: result.stderr.toString()
-    };
-  } catch (error: any) {
-    // If interrupted by SIGINT during cleanup, treat as non-fatal
-    if (error.signal === 'SIGINT' || error.code === 'SIGINT') {
-      return { stdout: '', stderr: 'Interrupted by SIGINT' };
-    }
-    throw error;
-  }
-}
+import {
+  createNetwork as dockerCreateNetwork,
+  networkExists as dockerNetworkExists,
+  inspectNetwork as dockerInspectNetwork,
+  removeNetwork as dockerRemoveNetwork,
+  listNetworks as dockerListNetworks,
+  disconnectAllFromNetwork,
+  pruneNetworks,
+} from './dockerClient';
 
 /**
  * Network Manager for Session-based Docker Networks
@@ -164,15 +150,10 @@ let lastEmergencyCleanup = 0;
 const EMERGENCY_CLEANUP_COOLDOWN = 5000; // 5 seconds minimum between emergency cleanups
 
 /**
- * Check if a Docker network exists
+ * Check if a Docker network exists (via SDK, no process spawn)
  */
 export async function networkExists(networkName: string): Promise<boolean> {
-  try {
-    await execAsync(`docker network inspect ${networkName}`, { timeout: config.docker.commandTimeout });
-    return true;
-  } catch {
-    return false;
-  }
+  return dockerNetworkExists(networkName);
 }
 
 /**
@@ -210,15 +191,11 @@ export async function getOrCreateSessionNetwork(sessionId: string): Promise<stri
 }
 
 /**
- * List all session networks
+ * List all session networks (via SDK)
  */
 export async function listSessionNetworks(): Promise<string[]> {
   try {
-    const { stdout } = await execAsync(
-      `docker network ls --filter name=${config.network.sessionNetworkPrefix} --format "{{.Name}}"`,
-      { timeout: config.docker.commandTimeout }
-    );
-    return stdout.trim().split('\n').filter(name => name.length > 0);
+    return await dockerListNetworks(config.network.sessionNetworkPrefix);
   } catch (error) {
     console.error('[NetworkManager] Failed to list session networks:', error);
     return [];
@@ -274,14 +251,14 @@ async function createSessionNetworkWithRetry(sessionId: string, maxRetries: numb
 }
 
 /** 
- * Create a session network with explicit subnet allocation
- * Uses configured address pools to avoid Docker's default pool exhaustion
+ * Create a session network with explicit subnet allocation via Docker SDK.
+ * Eliminates shell process spawning overhead.
  */
 export async function createSessionNetwork(sessionId: string): Promise<string> {
   const networkName = `${config.network.sessionNetworkPrefix}${sessionId}`;
 
-  // Double-check if network already exists (could have been created by another concurrent request)
-  const exists = await networkExists(networkName);
+  // Double-check if network already exists (could have been created concurrently)
+  const exists = await dockerNetworkExists(networkName);
   if (exists) {
     console.log(`[NetworkManager] Network already exists (race): ${networkName}`);
     return networkName;
@@ -293,11 +270,17 @@ export async function createSessionNetwork(sessionId: string): Promise<string> {
     throw new Error('Failed to allocate subnet: all address pools exhausted');
   }
 
-  const command = `docker network create --driver ${config.network.networkDriver} --subnet=${subnet} --label ${config.network.networkLabel} --label session=${sessionId} ${networkName}`;
-
   try {
     console.log(`[NetworkManager] Creating network: ${networkName} with subnet ${subnet}`);
-    await execAsync(command, { timeout: config.docker.commandTimeout });
+    await dockerCreateNetwork({
+      name: networkName,
+      driver: config.network.networkDriver,
+      subnet,
+      labels: {
+        'type': 'coderunner',
+        'session': sessionId,
+      },
+    });
     networkMetrics.networksCreated++;
     console.log(`[NetworkManager] Network created: ${networkName}`);
     return networkName;
@@ -305,34 +288,25 @@ export async function createSessionNetwork(sessionId: string): Promise<string> {
     console.error(`[NetworkManager] Failed to create network ${networkName}:`, error.message);
     networkMetrics.cleanupErrors++;
 
-    // Check if the error is "network already exists" - this can happen in race conditions
-    if (error.message.includes('already exists')) {
+    // Handle "network already exists" race condition
+    if (error.message?.includes('already exists') || error.statusCode === 409) {
       console.log(`[NetworkManager] Network ${networkName} already exists (concurrent creation)`);
       subnetAllocator.releaseSubnet(subnet);
-
-      // Verify the network exists and is usable
-      const exists = await networkExists(networkName);
-      if (exists) {
-        return networkName;
-      }
+      const existsNow = await dockerNetworkExists(networkName);
+      if (existsNow) return networkName;
       throw new Error(`Network ${networkName} claimed to exist but not found`);
     }
 
-    // Release the subnet since network creation failed
     subnetAllocator.releaseSubnet(subnet);
 
-    // If creation fails due to subnet conflict, try emergency cleanup (with mutex)
-    if (error.message.includes('address pool') || error.message.includes('subnet') || error.message.includes('overlap')) {
+    // If creation fails due to subnet conflict, try emergency cleanup
+    if (error.message?.includes('address pool') || error.message?.includes('subnet') || error.message?.includes('overlap')) {
       console.log(`[NetworkManager] Subnet conflict detected, attempting emergency cleanup...`);
-
       try {
         await emergencyNetworkCleanup();
       } catch (cleanupError) {
         console.error(`[NetworkManager] Emergency cleanup failed:`, cleanupError);
-        // Continue anyway - the retry mechanism will handle it
       }
-
-      // Don't retry here - let the caller (createSessionNetworkWithRetry) handle retries
       throw new Error(`Failed to create network due to subnet conflict: ${error.message}`);
     }
 
@@ -341,30 +315,33 @@ export async function createSessionNetwork(sessionId: string): Promise<string> {
 }
 
 /**
- * Delete a Docker network and release its subnet
+ * Delete a Docker network and release its subnet (via SDK)
  */
 export async function deleteSessionNetwork(sessionId: string): Promise<void> {
   const networkName = `${config.network.sessionNetworkPrefix}${sessionId}`;
 
   try {
-    // Get subnet before deleting
-    const { stdout } = await execAsync(`docker network inspect ${networkName} --format "{{range .IPAM.Config}}{{.Subnet}}{{end}}"`, { timeout: 5000 });
-    const subnet = stdout.trim();
+    // Get subnet before deleting so we can release it
+    let subnet = '';
+    try {
+      const info = await dockerInspectNetwork(networkName);
+      subnet = info.subnet;
+    } catch {
+      // Network may already be gone
+    }
 
     console.log(`[NetworkManager] Deleting network: ${networkName} (subnet: ${subnet})`);
-    await execAsync(`docker network rm ${networkName}`, { timeout: config.docker.commandTimeout });
+    await dockerRemoveNetwork(networkName);
     networkMetrics.networksDeleted++;
     console.log(`[NetworkManager] Network deleted: ${networkName}`);
 
-    // Release subnet back to pool
-    if (subnet && subnet !== '') {
+    if (subnet) {
       subnetAllocator.releaseSubnet(subnet);
       console.log(`[NetworkManager] Subnet ${subnet} released back to pool`);
     }
   } catch (error: any) {
     console.error(`[NetworkManager] Failed to delete network ${networkName}:`, error.message);
     networkMetrics.cleanupErrors++;
-    // Don't throw - network might already be deleted or not exist
   }
 }
 
@@ -396,33 +373,17 @@ export async function cleanupOrphanedNetworks(maxAgeMs: number = 300000): Promis
     networkMetrics.escalationLevel = escalationLevel;
     console.log(`[NetworkManager] Checking ${networks.length} networks for cleanup (max age: ${effectiveMaxAge / 1000}s, escalation: ${escalationLevel})`);
 
-    // Batch process networks for faster cleanup
+    // Batch process networks for faster cleanup (via SDK — no shell overhead)
     const batchSize = escalationLevel === 2 ? 20 : 10;
     const cleanupPromises: Promise<void>[] = [];
 
     for (const networkName of networks) {
       const cleanupTask = (async () => {
         try {
-          // Get network creation time and container count in parallel
-          const [inspectOutput, containersOutput] = await Promise.all([
-            safeExecAsync(
-              `docker network inspect ${networkName} --format "{{.Created}}"`,
-              { timeout: config.docker.commandTimeout }
-            ),
-            safeExecAsync(
-              `docker network inspect ${networkName} --format "{{len .Containers}}"`,
-              { timeout: config.docker.commandTimeout }
-            )
-          ]);
-
-          // Skip if interrupted or empty response
-          if (!inspectOutput.stdout.trim() || !containersOutput.stdout.trim()) {
-            return;
-          }
-
-          const createdAt = new Date(inspectOutput.stdout.trim()).getTime();
+          const info = await dockerInspectNetwork(networkName);
+          const createdAt = new Date(info.created).getTime();
           const ageMs = now - createdAt;
-          const containerCount = parseInt(containersOutput.stdout.trim(), 10);
+          const containerCount = info.containerCount;
 
           // Check if network should be cleaned up
           if (ageMs > effectiveMaxAge && containerCount === 0) {
@@ -439,7 +400,7 @@ export async function cleanupOrphanedNetworks(maxAgeMs: number = 300000): Promis
 
       cleanupPromises.push(cleanupTask);
 
-      // Process in batches to avoid overwhelming Docker daemon
+      // Process in batches
       if (cleanupPromises.length >= batchSize) {
         await Promise.all(cleanupPromises);
         cleanupPromises.length = 0;
@@ -487,16 +448,12 @@ export async function emergencyNetworkCleanup(): Promise<void> {
   try {
     console.log('[NetworkManager] ⚠️ EMERGENCY: Pruning all unused CodeRunner networks');
 
-    // Docker network prune removes all unused networks matching filter
+    // Use SDK prune — no process spawn
     try {
-      const { stdout } = await execAsync(
-        `docker network prune -f --filter "label=${config.network.networkLabel}"`,
-        { timeout: 30000 }
-      );
-      console.log(`[NetworkManager] Emergency cleanup result: ${stdout.trim()}`);
+      const deleted = await pruneNetworks(config.network.networkLabel);
+      console.log(`[NetworkManager] Emergency prune removed ${deleted.length} networks`);
     } catch (pruneError: any) {
-      // If prune is already running (by another process), that's okay
-      if (pruneError.message.includes('already running')) {
+      if (pruneError.message?.includes('already running')) {
         console.log('[NetworkManager] ⚠️ EMERGENCY: Prune already running in another process');
       } else {
         throw pruneError;
@@ -507,25 +464,19 @@ export async function emergencyNetworkCleanup(): Promise<void> {
     const networks = await listSessionNetworks();
     let manualCleanupCount = 0;
 
-    // Process in batches to avoid overwhelming Docker
     const batchSize = 10;
     for (let i = 0; i < networks.length; i += batchSize) {
       const batch = networks.slice(i, i + batchSize);
       const cleanupPromises = batch.map(async (networkName) => {
         try {
-          const { stdout: containersOutput } = await execAsync(
-            `docker network inspect ${networkName} --format "{{len .Containers}}"`,
-            { timeout: 5000 }
-          );
-          const containerCount = parseInt(containersOutput.trim(), 10);
-
-          if (containerCount === 0) {
+          const info = await dockerInspectNetwork(networkName);
+          if (info.containerCount === 0) {
             const sessionId = networkName.replace(config.network.sessionNetworkPrefix, '');
             await deleteSessionNetwork(sessionId);
             manualCleanupCount++;
           }
-        } catch (error) {
-          // Ignore errors during emergency cleanup - network might already be deleted
+        } catch {
+          // Ignore errors during emergency cleanup
         }
       });
 
@@ -541,7 +492,7 @@ export async function emergencyNetworkCleanup(): Promise<void> {
 }
 
 /**
- * Get network statistics for monitoring
+ * Get network statistics for monitoring (via SDK)
  */
 export async function getNetworkStats(): Promise<{
   total: number;
@@ -564,43 +515,29 @@ export async function getNetworkStats(): Promise<{
       ageSeconds: number;
     }> = [];
 
-    for (const networkName of networks) {
-      try {
-        const { stdout: containersOutput } = await execAsync(
-          `docker network inspect ${networkName} --format "{{len .Containers}}"`,
-          { timeout: 5000 }
-        );
-        const containerCount = parseInt(containersOutput.trim(), 10);
+    // Process in parallel batches for speed
+    const batchSize = 10;
+    for (let i = 0; i < networks.length; i += batchSize) {
+      const batch = networks.slice(i, i + batchSize);
+      const results = await Promise.allSettled(
+        batch.map(async (networkName) => {
+          const info = await dockerInspectNetwork(networkName);
+          const createdAt = new Date(info.created).getTime();
+          const ageSeconds = Math.floor((now - createdAt) / 1000);
 
-        const { stdout: createdOutput } = await execAsync(
-          `docker network inspect ${networkName} --format "{{.Created}}"`,
-          { timeout: 5000 }
-        );
-        const createdAt = new Date(createdOutput.trim()).getTime();
-        const ageSeconds = Math.floor((now - createdAt) / 1000);
+          if (info.containerCount > 0) withContainers++;
+          else empty++;
 
-        if (containerCount > 0) {
-          withContainers++;
-        } else {
-          empty++;
-        }
-
-        networkDetails.push({
-          name: networkName,
-          containerCount,
-          ageSeconds
-        });
-      } catch (error) {
-        // Ignore errors for individual networks
-      }
+          networkDetails.push({
+            name: networkName,
+            containerCount: info.containerCount,
+            ageSeconds,
+          });
+        }),
+      );
     }
 
-    return {
-      total: networks.length,
-      withContainers,
-      empty,
-      networks: networkDetails
-    };
+    return { total: networks.length, withContainers, empty, networks: networkDetails };
   } catch (error) {
     console.error('[NetworkManager] Failed to get network stats:', error);
     return { total: 0, withContainers: 0, empty: 0, networks: [] };
@@ -625,72 +562,41 @@ export async function aggressiveBulkNetworkCleanup(): Promise<number> {
     const startTime = Date.now();
     let removedCount = 0;
 
-    // Step 1: Get all CodeRunner networks
-    const networksResult = await safeExecAsync(
-      `docker network ls --filter "name=${config.network.sessionNetworkPrefix}" --quiet`,
-      { timeout: 10000 }
-    );
-
-    if (!networksResult.stdout.trim()) {
+    // Step 1: Get all CodeRunner session networks
+    const networks = await listSessionNetworks();
+    if (networks.length === 0) {
       console.log('[NetworkManager] No networks found for bulk cleanup');
       return 0;
     }
+    console.log(`[NetworkManager] Found ${networks.length} networks for bulk removal`);
 
-    const networkIds = networksResult.stdout.trim().split('\n').filter(id => id.trim());
-    console.log(`[NetworkManager] Found ${networkIds.length} networks for bulk removal`);
-
-    // Step 2: Force disconnect and remove all containers in these networks
+    // Step 2: Force-disconnect all containers from these networks
     console.log('[NetworkManager] Disconnecting containers from networks...');
-    for (const networkId of networkIds) {
-      try {
-        // Get containers in this network
-        const containersResult = await safeExecAsync(
-          `docker network inspect ${networkId} --format '{{range .Containers}}{{.Name}} {{end}}'`,
-          { timeout: 5000 }
-        );
-
-        if (containersResult.stdout.trim()) {
-          const containerNames = containersResult.stdout.trim().split(' ').filter(n => n.trim());
-
-          // Force disconnect each container
-          for (const containerName of containerNames) {
-            await safeExecAsync(
-              `docker network disconnect -f ${networkId} ${containerName}`,
-              { timeout: 5000 }
-            ).catch(() => {
-              // Ignore errors - container might already be gone
-            });
-          }
-        }
-      } catch (error) {
-        // Continue even if this network fails
-      }
-    }
+    await Promise.allSettled(
+      networks.map((name) => disconnectAllFromNetwork(name)),
+    );
 
     // Step 3: Brief pause for Docker to process disconnections
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
-    // Step 4: Bulk remove all networks in parallel batches
+    // Step 4: Bulk remove networks in parallel batches via SDK
     console.log('[NetworkManager] Bulk removing networks in parallel...');
-    const batchSize = 20; // Process 20 at a time
+    const batchSize = 20;
 
-    for (let i = 0; i < networkIds.length; i += batchSize) {
-      const batch = networkIds.slice(i, i + batchSize);
-      const removePromises = batch.map(networkId =>
-        safeExecAsync(`docker network rm ${networkId}`, { timeout: 10000 })
-          .then(() => {
-            removedCount++;
-            return true;
-          })
-          .catch(() => false) // Ignore failures
+    for (let i = 0; i < networks.length; i += batchSize) {
+      const batch = networks.slice(i, i + batchSize);
+      const results = await Promise.allSettled(
+        batch.map(async (name) => {
+          const sessionId = name.replace(config.network.sessionNetworkPrefix, '');
+          await deleteSessionNetwork(sessionId);
+        }),
       );
 
-      await Promise.all(removePromises);
+      removedCount += results.filter((r) => r.status === 'fulfilled').length;
     }
 
     const duration = Date.now() - startTime;
-    console.log(`[NetworkManager] ✅ Aggressive cleanup complete: removed ${removedCount}/${networkIds.length} networks in ${duration}ms`);
-
+    console.log(`[NetworkManager] ✅ Aggressive cleanup complete: removed ${removedCount}/${networks.length} networks in ${duration}ms`);
     return removedCount;
   } catch (error) {
     console.error('[NetworkManager] Aggressive bulk cleanup failed:', error);

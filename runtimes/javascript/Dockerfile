@@ -1,5 +1,5 @@
-FROM node:18-slim
+FROM node:18-alpine
 
-RUN useradd -m runner
+RUN adduser -D runner
 USER runner
 WORKDIR /app

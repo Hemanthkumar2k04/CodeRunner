@@ -13,6 +13,8 @@ import { sessionPool } from './pool';
 import { config, validateConfig } from './config';
 import { getOrCreateSessionNetwork, deleteSessionNetwork, getNetworkName, cleanupOrphanedNetworks, aggressiveBulkNetworkCleanup, getNetworkStats, getSubnetStats, getNetworkMetrics } from './networkManager';
 import { kernelManager } from './kernelManager';
+import { putFiles, execInteractive, execInContainer, pingDaemon, imageExists, type FileEntry } from './dockerClient';
+import { pipelineMetrics, createStopwatch, type PipelineTimings } from './pipelineMetrics';
 
 import { adminMetrics } from './adminMetrics';
 import adminRoutes from './adminRoutes';
@@ -21,7 +23,7 @@ const { getReport } = require('../tests/utils/report-manager');
 
 // Re-read environment variables into config after dotenv load
 (config.docker as any).memory = process.env.DOCKER_MEMORY || '512m';
-(config.docker as any).memorySQL = process.env.DOCKER_MEMORY_SQL || '512m';
+(config.docker as any).memorySQL = process.env.DOCKER_MEMORY_SQL || '1024m';
 (config.docker as any).cpus = process.env.DOCKER_CPUS || '0.5';
 (config.docker as any).cpusNotebook = process.env.DOCKER_CPUS_NOTEBOOK || '1';
 (config.docker as any).timeout = process.env.DOCKER_TIMEOUT || '30s';
@@ -44,6 +46,20 @@ try {
     console.log('[Server] Startup cleanup completed');
   } else {
     console.warn('[Server] Cleanup script not found at:', cleanupScript);
+  }
+
+  // Clean orphaned temp directories from previous runs
+  const tempBase = path.resolve(__dirname, '..', 'temp');
+  if (fs.existsSync(tempBase)) {
+    const orphaned = fs.readdirSync(tempBase).filter((d) => d.startsWith('runner-'));
+    if (orphaned.length > 0) {
+      console.log(`[Server] Cleaning ${orphaned.length} orphaned temp directories`);
+      for (const dir of orphaned) {
+        try {
+          fs.rmSync(path.join(tempBase, dir), { recursive: true, force: true });
+        } catch { /* ignore */ }
+      }
+    }
   }
 } catch (error) {
   console.error('[Server] Startup cleanup failed:', error);
@@ -348,7 +364,6 @@ io.on('connection', (socket) => {
   adminMetrics.trackClientConnected(socket.id);
 
   let currentProcess: any = null;
-  let tempDir: string | null = null;
   let containerId: string | null = null;
   let currentLanguage: string | null = null;
   let currentSessionId: string | null = null;
@@ -451,14 +466,22 @@ io.on('connection', (socket) => {
       // Retry logic: if network/container creation fails, cleanup and try with new network
       const maxRetries = 2;
       let lastError: any = null;
+      let containerReused = false;
+      const sw = createStopwatch();
 
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
           console.log(`[Execution] Creating container for session ${socket.id.substring(0, 8)}, language ${language} (attempt ${attempt}/${maxRetries})`);
           const networkName = await getOrCreateSessionNetwork(socket.id);
-          console.log(`[Execution] Network ready: ${networkName}`);
+          const networkMs = sw.lap();
+          console.log(`[Execution] Network ready: ${networkName} (${networkMs}ms)`);
+
+          // Check if container will be reused (before getOrCreate changes the state)
+          const poolStats = sessionPool.getMetrics();
           containerId = await sessionPool.getOrCreateContainer(language, socket.id, networkName);
-          console.log(`[Execution] Container ready: ${containerId.substring(0, 12)}`);
+          const containerMs = sw.lap();
+          containerReused = poolStats.containersReused < sessionPool.getMetrics().containersReused;
+          console.log(`[Execution] Container ready: ${containerId.substring(0, 12)} (${containerMs}ms, reused=${containerReused})`);
           break; // Success - exit retry loop
         } catch (e: any) {
           lastError = e;
@@ -488,25 +511,18 @@ io.on('connection', (socket) => {
         return;
       }
 
-      const runId = Date.now().toString() + Math.random().toString(36).substring(7);
-      tempDir = path.resolve(__dirname, '..', 'temp', `runner-${runId}`);
-
-      // 2. Write files (filter for C/C++ to avoid conflicts)
+      // 2. Stream files directly into container (zero host I/O)
       try {
-        fs.mkdirSync(tempDir, { recursive: true });
-
         // For C/C++, filter files based on entry file extension to avoid conflicts
         let filesToWrite = files;
         if (language === 'cpp' && execFile) {
           const entryExt = execFile.path.split('.').pop()?.toLowerCase();
           if (entryExt === 'c') {
-            // Only copy .c and .h files
             filesToWrite = files.filter(f => {
               const ext = f.path.split('.').pop()?.toLowerCase();
               return ext === 'c' || ext === 'h';
             });
           } else {
-            // Only copy C++ files (.cpp, .cc, .cxx, .c++, .hpp, .h)
             filesToWrite = files.filter(f => {
               const ext = f.path.split('.').pop()?.toLowerCase();
               return ext === 'cpp' || ext === 'cc' || ext === 'cxx' || ext === 'c++' || ext === 'hpp' || ext === 'h';
@@ -514,11 +530,14 @@ io.on('connection', (socket) => {
           }
         }
 
-        for (const file of filesToWrite) {
-          const filePath = path.join(tempDir, file.path);
-          fs.mkdirSync(path.dirname(filePath), { recursive: true });
-          fs.writeFileSync(filePath, file.content);
-        }
+        const fileEntries: FileEntry[] = filesToWrite.map(f => ({
+          path: f.path,
+          content: f.content,
+        }));
+
+        await putFiles(containerId, fileEntries);
+        const fileTransferMs = sw.lap();
+        console.log(`[Execution] Files streamed to container (${fileTransferMs}ms, ${fileEntries.length} files)`);
       } catch (err: any) {
         cleanup().catch(e => console.error('[Cleanup] Error:', e));
         socket.emit('output', { sessionId, type: 'stderr', data: `System Error: ${err.message}\n` });
@@ -526,57 +545,44 @@ io.on('connection', (socket) => {
         return;
       }
 
-      // 3. Copy files
-      const cpCommand = `docker cp "${tempDir}/." ${containerId}:/app/`;
-      console.log(`[Execution] Copying files to container ${containerId.substring(0, 12)}`);
+      // 3. Execute via Docker SDK interactive exec (streaming output)
+      try {
+        const execSession = await execInteractive(containerId, command);
+        currentProcess = execSession;
 
-      await new Promise<void>((resolve, reject) => {
-        exec(cpCommand, { timeout: config.docker.commandTimeout }, (cpError) => {
-          if (cpError) {
-            console.error(`[Execution] Failed to copy files:`, cpError);
-            cleanup().catch(e => console.error('[Cleanup] Error:', e));
-            socket.emit('output', { sessionId, type: 'stderr', data: `System Error (Copy): ${cpError.message}\n` });
-            socket.emit('exit', { sessionId, code: 1 });
-            reject(cpError);
-            return;
-          }
-          console.log(`[Execution] Files copied successfully to ${containerId!.substring(0, 12)}`);
+        execSession.stdout.on('data', (chunk: Buffer) => {
+          outputBuffer.push({ sessionId, type: 'stdout', data: chunk.toString() });
+          scheduleFlush();
+        });
 
-          // 4. Spawn process
-          // Use -i for interactive (keeps stdin open)
-          const dockerArgs = [
-            'exec',
-            '-i',
-            '-w', '/app',
-            containerId!,
-            '/bin/sh', '-c', command
-          ];
+        execSession.stderr.on('data', (chunk: Buffer) => {
+          outputBuffer.push({ sessionId, type: 'stderr', data: chunk.toString() });
+          scheduleFlush();
+        });
 
-          console.log(`[Execution] Spawning process: docker ${dockerArgs.join(' ')}`);
-          currentProcess = spawn('docker', dockerArgs);
+        // Wait for the exec to finish
+        await new Promise<void>((resolve) => {
+          let ended = false;
+          const onEnd = async () => {
+            if (ended) return;
+            ended = true;
 
-          currentProcess.stdout.on('data', (chunk: Buffer) => {
-            console.log(`[Execution] stdout data received: ${chunk.length} bytes`);
-            outputBuffer.push({ sessionId, type: 'stdout', data: chunk.toString() });
-            scheduleFlush();
-          });
-
-          currentProcess.stderr.on('data', (chunk: Buffer) => {
-            console.log(`[Execution] stderr data received: ${chunk.length} bytes`);
-            outputBuffer.push({ sessionId, type: 'stderr', data: chunk.toString() });
-            scheduleFlush();
-          });
-
-          currentProcess.on('close', (code: number) => {
-            console.log(`[Execution] Process closed with code ${code}`);
             // Flush any remaining buffered output before exit
             if (flushBufferTimer) {
               clearTimeout(flushBufferTimer);
               flushOutputBuffer();
             }
 
-            // Calculate execution time
-            const executionTime = Date.now() - startTime;
+            const executionMs = sw.lap();
+            const executionTime = sw.total();
+
+            // Get exit code
+            let code = 0;
+            try {
+              code = await execSession.getExitCode();
+            } catch {
+              code = -1;
+            }
 
             // Track execution completion
             adminMetrics.trackExecutionEnded(executionId);
@@ -589,28 +595,53 @@ io.on('connection', (socket) => {
               clientId: socket.id,
             });
 
-            // Only emit exit if not manually stopped (manual stop already emitted exit)
+            // Record pipeline metrics
+            pipelineMetrics.record({
+              queueMs: 0, // Would need queue-level timing
+              networkMs: 0,
+              containerMs: 0,
+              fileTransferMs: 0,
+              executionMs,
+              cleanupMs: 0,
+              totalMs: executionTime,
+              containerReused,
+              language,
+            });
+
+            // Only emit exit if not manually stopped
             if (!manuallyStopped) {
               socket.emit('exit', { sessionId, code, executionTime });
             }
             cleanup().catch(e => console.error('[Cleanup] Error:', e));
             resolve();
+          };
+
+          execSession.stdout.on('end', onEnd);
+          execSession.stderr.on('end', () => {
+            // stderr may end before stdout; let stdout's end drive completion
           });
 
-          currentProcess.on('error', (err: any) => {
-            console.error(`[Execution] Process error:`, err);
-            socket.emit('output', { sessionId, type: 'stderr', data: `Process Error: ${err.message}\n` });
-            cleanup().catch(e => console.error('[Cleanup] Error:', e));
-            reject(err);
-          });
+          // Fallback: if both streams close without 'end', use a timeout
+          setTimeout(() => {
+            if (!ended) onEnd();
+          }, parseInt(config.docker.timeout) * 1000 || 30_000);
         });
-      });
+      } catch (err: any) {
+        console.error(`[Execution] Process error:`, err);
+        socket.emit('output', { sessionId, type: 'stderr', data: `Process Error: ${err.message}\n` });
+        socket.emit('exit', { sessionId, code: 1 });
+        cleanup().catch(e => console.error('[Cleanup] Error:', e));
+      }
     }, 2, language); // Priority 2 for interactive WebSocket requests
   });
 
   socket.on('input', (data: string) => {
     if (currentProcess && currentProcess.stdin) {
-      currentProcess.stdin.write(data);
+      try {
+        currentProcess.stdin.write(data);
+      } catch {
+        // Stream may have closed
+      }
     }
   });
 
@@ -618,7 +649,12 @@ io.on('connection', (socket) => {
     const { sessionId } = data;
     if (currentProcess && currentSessionId === sessionId) {
       manuallyStopped = true;
-      currentProcess.kill('SIGTERM');
+      // Kill via SDK's stream destroy (equivalent to SIGTERM)
+      if (typeof currentProcess.kill === 'function') {
+        currentProcess.kill();
+      } else if (currentProcess.kill) {
+        currentProcess.kill('SIGTERM');
+      }
       socket.emit('output', { sessionId, type: 'system', data: '[Process terminated]\n' });
       socket.emit('exit', { sessionId, code: -1 });
       cleanup().catch(e => console.error('[Cleanup] Error:', e));
@@ -764,12 +800,6 @@ io.on('connection', (socket) => {
   });
 
   async function cleanup() {
-    if (tempDir) {
-      try {
-        fs.rmSync(tempDir, { recursive: true, force: true });
-      } catch (e) { /* ignore */ }
-      tempDir = null;
-    }
     if (containerId) {
       // Return container to pool (cleaned and TTL refreshed)
       await sessionPool.returnContainer(containerId, socket.id).catch(err =>
@@ -886,155 +916,113 @@ app.post('/api/run', async (req, res) => {
 });
 
 /**
- * Execute code with session container (for API endpoint)
- * Always uses networking
+ * Execute code with session container (for API endpoint).
+ * Uses Docker SDK streaming: zero host filesystem I/O.
  */
 async function executeWithSessionContainer(
   language: string,
   files: File[],
   sessionId: string
 ): Promise<RunResult> {
-  return new Promise(async (resolve) => {
-    const runtimeConfig = config.runtimes[language as keyof typeof config.runtimes];
-    if (!runtimeConfig) {
-      return resolve({
-        stdout: '',
-        stderr: `Error: Unsupported language '${language}'`,
-        exitCode: 1
-      });
-    }
+  const runtimeConfig = config.runtimes[language as keyof typeof config.runtimes];
+  if (!runtimeConfig) {
+    return { stdout: '', stderr: `Error: Unsupported language '${language}'`, exitCode: 1 };
+  }
 
-    // Find entry file
-    const entryFile = files.find(f => f.toBeExec);
-    if (!entryFile && language !== 'cpp' && language !== 'sql') {
-      return resolve({ stdout: '', stderr: 'Error: No entry file marked for execution.', exitCode: 1 });
-    }
+  // Find entry file
+  const entryFile = files.find(f => f.toBeExec);
+  if (!entryFile && language !== 'cpp' && language !== 'sql') {
+    return { stdout: '', stderr: 'Error: No entry file marked for execution.', exitCode: 1 };
+  }
 
-    let execFile = entryFile;
-    if (!execFile && language === 'sql') {
-      execFile = files.find(f => f.name.endsWith('.sql'));
-      if (!execFile) {
-        return resolve({ stdout: '', stderr: 'Error: No SQL file found.', exitCode: 1 });
-      }
+  let execFile = entryFile;
+  if (!execFile && language === 'sql') {
+    execFile = files.find(f => f.name.endsWith('.sql'));
+    if (!execFile) {
+      return { stdout: '', stderr: 'Error: No SQL file found.', exitCode: 1 };
     }
+  }
 
-    let command = '';
+  let command = '';
+  try {
+    command = getRunCommand(language, execFile ? execFile.path : '');
+  } catch (e: any) {
+    return { stdout: '', stderr: e.message, exitCode: 1 };
+  }
+
+  let containerId: string | null = null;
+
+  // Retry logic for network/container acquisition
+  const maxRetries = 2;
+  let networkCreated = false;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      command = getRunCommand(language, execFile ? execFile.path : '');
-    } catch (e: any) {
-      return resolve({ stdout: '', stderr: e.message, exitCode: 1 });
-    }
-
-    let containerId: string | null = null;
-    let tempDir: string | null = null;
-
-    // Retry logic for network/container acquisition
-    const maxRetries = 2;
-    let networkCreated = false;
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        // Always use session container with networking
-        const networkName = await getOrCreateSessionNetwork(sessionId);
-        networkCreated = true;
-        containerId = await sessionPool.getOrCreateContainer(language, sessionId, networkName);
-        break; // Success - exit retry loop
-      } catch (error: any) {
-        console.error(`[API] Failed to acquire container (attempt ${attempt}/${maxRetries}):`, error.message);
-
-        // Clean up network if it was created
-        if (networkCreated) {
-          await deleteSessionNetwork(sessionId).catch(cleanupErr =>
-            console.error(`[API] Failed to cleanup network after error:`, cleanupErr)
-          );
-          networkCreated = false;
-        }
-
-        // If this was the last attempt, give up
-        if (attempt === maxRetries) {
-          return resolve({ stdout: '', stderr: `System Error: Failed to acquire container after ${maxRetries} attempts - ${error.message}`, exitCode: 1 });
-        }
-
-        // Wait before retrying
-        await new Promise(r => setTimeout(r, 500));
-      }
-    }
-
-    try {
-      const runId = Date.now().toString() + Math.random().toString(36).substring(7);
-      tempDir = path.resolve(__dirname, '..', 'temp', `runner-${runId}`);
-
-      // Write files (filter for C/C++ to avoid conflicts)
-      fs.mkdirSync(tempDir, { recursive: true });
-
-      // For C/C++, filter files based on entry file extension to avoid conflicts
-      let filesToWrite = files;
-      if (language === 'cpp' && execFile) {
-        const entryExt = execFile.path.split('.').pop()?.toLowerCase();
-        if (entryExt === 'c') {
-          // Only copy .c and .h files
-          filesToWrite = files.filter(f => {
-            const ext = f.path.split('.').pop()?.toLowerCase();
-            return ext === 'c' || ext === 'h';
-          });
-        } else {
-          // Only copy C++ files (.cpp, .cc, .cxx, .c++, .hpp, .h)
-          filesToWrite = files.filter(f => {
-            const ext = f.path.split('.').pop()?.toLowerCase();
-            return ext === 'cpp' || ext === 'cc' || ext === 'cxx' || ext === 'c++' || ext === 'hpp' || ext === 'h';
-          });
-        }
-      }
-
-      for (const file of filesToWrite) {
-        const filePath = path.join(tempDir, file.path);
-        fs.mkdirSync(path.dirname(filePath), { recursive: true });
-        fs.writeFileSync(filePath, file.content);
-      }
-
-      // Copy files to container
-      const cpCommand = `docker cp "${tempDir}/." ${containerId}:/app/`;
-      await new Promise<void>((res, rej) => {
-        exec(cpCommand, { timeout: config.docker.commandTimeout }, (err) => err ? rej(err) : res());
-      });
-
-      // Execute command - use proper escaping
-      const execCommand = `docker exec -w /app ${containerId} /bin/sh -c ${JSON.stringify(command)}`;
-      exec(execCommand, { timeout: 30000 }, (error, stdout, stderr) => {
-        const exitCode = error?.code ?? 0;
-
-        // Cleanup
-        if (tempDir) {
-          try {
-            fs.rmSync(tempDir, { recursive: true, force: true });
-          } catch (e) { /* ignore */ }
-        }
-
-        if (containerId) {
-          // Return to pool for reuse (cleaned and TTL refreshed)
-          sessionPool.returnContainer(containerId, sessionId).catch(err =>
-            console.error(`[API] Failed to return container to pool:`, err)
-          );
-        }
-
-        resolve({ stdout, stderr, exitCode });
-      });
+      const networkName = await getOrCreateSessionNetwork(sessionId);
+      networkCreated = true;
+      containerId = await sessionPool.getOrCreateContainer(language, sessionId, networkName);
+      break;
     } catch (error: any) {
-      // Cleanup on error
-      if (tempDir) {
-        try {
-          fs.rmSync(tempDir, { recursive: true, force: true });
-        } catch (e) { /* ignore */ }
+      console.error(`[API] Failed to acquire container (attempt ${attempt}/${maxRetries}):`, error.message);
+
+      if (networkCreated) {
+        await deleteSessionNetwork(sessionId).catch(cleanupErr =>
+          console.error(`[API] Failed to cleanup network after error:`, cleanupErr)
+        );
+        networkCreated = false;
       }
 
-      // Clean up network if it was created but execution failed
-      await deleteSessionNetwork(sessionId).catch(cleanupErr =>
-        console.error(`[API] Failed to cleanup network after error:`, cleanupErr)
-      );
+      if (attempt === maxRetries) {
+        return { stdout: '', stderr: `System Error: Failed to acquire container after ${maxRetries} attempts - ${error.message}`, exitCode: 1 };
+      }
 
-      resolve({ stdout: '', stderr: `System Error: ${error.message}`, exitCode: 1 });
+      await new Promise(r => setTimeout(r, 500));
     }
-  });
+  }
+
+  if (!containerId) {
+    return { stdout: '', stderr: 'System Error: Container acquisition failed', exitCode: 1 };
+  }
+
+  try {
+    // Filter files for C/C++
+    let filesToWrite = files;
+    if (language === 'cpp' && execFile) {
+      const entryExt = execFile.path.split('.').pop()?.toLowerCase();
+      if (entryExt === 'c') {
+        filesToWrite = files.filter(f => {
+          const ext = f.path.split('.').pop()?.toLowerCase();
+          return ext === 'c' || ext === 'h';
+        });
+      } else {
+        filesToWrite = files.filter(f => {
+          const ext = f.path.split('.').pop()?.toLowerCase();
+          return ext === 'cpp' || ext === 'cc' || ext === 'cxx' || ext === 'c++' || ext === 'hpp' || ext === 'h';
+        });
+      }
+    }
+
+    // Stream files directly into container (no temp dir)
+    const fileEntries: FileEntry[] = filesToWrite.map(f => ({ path: f.path, content: f.content }));
+    await putFiles(containerId, fileEntries);
+
+    // Execute command via SDK
+    const result = await execInContainer(containerId, command, { timeout: 30_000 });
+
+    // Return container to pool
+    await sessionPool.returnContainer(containerId, sessionId).catch(err =>
+      console.error(`[API] Failed to return container to pool:`, err)
+    );
+
+    return { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode };
+  } catch (error: any) {
+    // Clean up network if execution failed
+    await deleteSessionNetwork(sessionId).catch(cleanupErr =>
+      console.error(`[API] Failed to cleanup network after error:`, cleanupErr)
+    );
+
+    return { stdout: '', stderr: `System Error: ${error.message}`, exitCode: 1 };
+  }
 }
 
 // Start Server
@@ -1052,17 +1040,16 @@ if (require.main === module) {
   async function preflightChecks(): Promise<void> {
     console.log('[Preflight] Running Docker environment checks...');
 
-    try {
-      // Check if Docker daemon is running
-      await execAsync('docker version', { timeout: 5000 });
-      console.log('[Preflight] ✓ Docker daemon is running');
-    } catch (error) {
+    // Check Docker daemon via SDK (no process spawn)
+    const isAlive = await pingDaemon();
+    if (!isAlive) {
       console.error('[Preflight] ✗ Docker daemon is not running or not accessible');
       console.error('[Preflight]   Please ensure Docker is installed and running');
       process.exit(1);
     }
+    console.log('[Preflight] ✓ Docker daemon is running');
 
-    // Check if required runtime images exist
+    // Check if required runtime images exist via SDK
     const requiredImages = [
       'python-runtime',
       'javascript-runtime',
@@ -1072,10 +1059,10 @@ if (require.main === module) {
     ];
 
     for (const imageName of requiredImages) {
-      try {
-        await execAsync(`docker image inspect ${imageName}`, { timeout: 5000 });
+      const exists = await imageExists(imageName);
+      if (exists) {
         console.log(`[Preflight] ✓ ${imageName} image found`);
-      } catch (error) {
+      } else {
         console.error(`[Preflight] ✗ ${imageName} image not found`);
         console.error(`[Preflight]   Run: docker build -t ${imageName} runtimes/${imageName.replace('-runtime', '')}/`);
       }

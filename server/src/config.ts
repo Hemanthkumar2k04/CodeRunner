@@ -17,7 +17,7 @@ export const config = {
   docker: {
     // Resource limits per container
     memory: process.env.DOCKER_MEMORY || '512m',
-    memorySQL: process.env.DOCKER_MEMORY_SQL || '512m', // SQL containers need more memory
+    memorySQL: process.env.DOCKER_MEMORY_SQL || '1024m', // SQL containers need more memory
     cpus: process.env.DOCKER_CPUS || '0.5',
     cpusNotebook: process.env.DOCKER_CPUS_NOTEBOOK || '1', // Notebook kernels get more CPU
     
@@ -53,17 +53,21 @@ export const config = {
   // === Session Container Management ===
   sessionContainers: {
     // TTL and cleanup
-    ttl: parseInt(process.env.SESSION_TTL || '30000', 10), // 30 seconds
+    ttl: parseInt(process.env.SESSION_TTL || '90000', 10), // 90 seconds (increased from 30s for better reuse)
     cleanupInterval: parseInt(process.env.CLEANUP_INTERVAL || '30000', 10), // 30 seconds
     orphanedNetworkAge: parseInt(process.env.ORPHANED_NETWORK_AGE || '300000', 10), // 5 minutes
     
     // Concurrency control for parallel execution requests
-    maxConcurrentSessions: parseInt(process.env.MAX_CONCURRENT_SESSIONS || '50', 10), // Number of simultaneous run requests (increased for load testing)
+    maxConcurrentSessions: parseInt(process.env.MAX_CONCURRENT_SESSIONS || '50', 10),
     
     // Pooling configuration
     maxPerSession: parseInt(process.env.MAX_CONTAINERS_PER_SESSION || '10', 10),
     autoCleanup: process.env.AUTO_CLEANUP !== 'false',
     preWarmPool: process.env.PREWARM_POOL === 'true',
+
+    // Performance: skip container cleanup for stateless languages (js, cpp, java)
+    // Safe because putArchive overwrites files atomically each run
+    skipStatelessCleanup: process.env.SKIP_STATELESS_CLEANUP !== 'false',
   },
 
   // === Execution Queue Configuration ===

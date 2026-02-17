@@ -1,5 +1,5 @@
-FROM openjdk:17.0.1-jdk-slim
+FROM eclipse-temurin:17-jdk-alpine
 
-RUN useradd -m runner
+RUN adduser -D runner
 USER runner
 WORKDIR /app

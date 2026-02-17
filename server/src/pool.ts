@@ -1,9 +1,12 @@
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import { config } from './config';
 import { adminMetrics } from './adminMetrics';
-
-const execAsync = promisify(exec);
+import {
+  createContainer as dockerCreateContainer,
+  execInContainer,
+  removeContainers,
+  listContainers,
+  waitForHealthy,
+} from './dockerClient';
 
 /**
  * Session Container with TTL
@@ -97,32 +100,16 @@ class SessionContainerPool {
       if (expiredContainers.length > 0) {
         console.log(`[Pool] Cleaning up ${expiredContainers.length} expired containers for session ${sessionId}`);
 
-        // Batch delete containers for better performance
+        // Batch delete containers via SDK (parallel, no process spawning)
         const containerIds = expiredContainers.map(c => c.containerId);
-        const batchSize = 10;
-
-        for (let i = 0; i < containerIds.length; i += batchSize) {
-          const batch = containerIds.slice(i, i + batchSize);
-          const batchCommand = `docker rm -fv ${batch.join(' ')}`;
-
-          try {
-            await execAsync(batchCommand, { timeout: config.docker.commandTimeout });
-            cleanedCount += batch.length;
-            this.metrics.containersDeleted += batch.length;
-            console.log(`[Pool] Deleted ${batch.length} expired containers`);
-          } catch (error: any) {
-            // Fallback to individual
-            for (const containerId of batch) {
-              try {
-                await execAsync(`docker rm -fv ${containerId}`, { timeout: config.docker.commandTimeout });
-                cleanedCount++;
-                this.metrics.containersDeleted++;
-              } catch (e: any) {
-                console.warn(`[Pool] Failed to delete expired container ${containerId.substring(0, 12)}: ${e.message}`);
-                this.metrics.cleanupErrors++;
-              }
-            }
-          }
+        try {
+          await removeContainers(containerIds);
+          cleanedCount += containerIds.length;
+          this.metrics.containersDeleted += containerIds.length;
+          console.log(`[Pool] Deleted ${containerIds.length} expired containers`);
+        } catch (error: any) {
+          console.warn(`[Pool] Batch deletion error: ${error.message}`);
+          this.metrics.cleanupErrors++;
         }
 
         // Remove from pool
@@ -138,43 +125,27 @@ class SessionContainerPool {
       }
     }
 
-    // 2. Safety Net: Find any "coderunner-session" containers that are orphaned or too old
-    // We check for containers created > 10 minutes ago as a safety measure against leaks
+    // 2. Safety Net: Find orphaned "coderunner-session" containers not in our pool
     try {
-      // Find all session containers
-      const { stdout } = await execAsync('docker ps -a --filter "label=type=coderunner-session" --format "{{.ID}}|{{.CreatedAt}}"');
-      if (stdout.trim()) {
-        const lines = stdout.trim().split('\n');
-        const activeContainerIds = new Set<string>();
+      const allSessionContainers = await listContainers({ 'type': 'coderunner-session' });
 
-        // Collect IDs of all containers currently known in our pool
-        for (const containers of this.pool.values()) {
-          for (const c of containers) {
-            activeContainerIds.add(c.containerId);
-            activeContainerIds.add(c.containerId.substring(0, 12));
-          }
+      const activeContainerIds = new Set<string>();
+      for (const containers of this.pool.values()) {
+        for (const c of containers) {
+          activeContainerIds.add(c.containerId);
+          activeContainerIds.add(c.containerId.substring(0, 12));
         }
+      }
 
-        for (const line of lines) {
-          const [id, createdStr] = line.split('|');
-          // If container is NOT in our active pool
-          if (!activeContainerIds.has(id)) {
-            // Also check age to avoid race condition with just-created containers
-            // (Though pool updates happen before docker run returns usually, async/await timing might vary)
-            // Ideally we parse CreatedAt, but for now assuming if it's not in pool it's orphaned 
-            // IF it's not brand new. 
-            // Let's rely on the fact that if it's not in pool, we don't know about it.
+      const orphanedIds = allSessionContainers
+        .filter((c) => !activeContainerIds.has(c.id) && !activeContainerIds.has(c.id.substring(0, 12)))
+        .map((c) => c.id);
 
-            console.log(`[Pool] Found orphaned/zombie container ${id} (not in active pool). Removing...`);
-            try {
-              await execAsync(`docker rm -fv ${id}`);
-              this.metrics.containersDeleted++;
-              cleanedCount++;
-            } catch (e: any) {
-              console.warn(`[Pool] Failed to remove orphaned container ${id}: ${e.message}`);
-            }
-          }
-        }
+      if (orphanedIds.length > 0) {
+        console.log(`[Pool] Found ${orphanedIds.length} orphaned containers. Removing...`);
+        await removeContainers(orphanedIds);
+        this.metrics.containersDeleted += orphanedIds.length;
+        cleanedCount += orphanedIds.length;
       }
     } catch (error) {
       console.error('[Pool] Safety net cleanup failed:', error);
@@ -304,7 +275,7 @@ class SessionContainerPool {
     const container = sessionContainers.find(c => c.containerId === containerId);
     if (container) {
       // Clean container data before returning to pool
-      await this.cleanContainer(containerId);
+      await this.cleanContainer(containerId, container.language);
 
       container.inUse = false;
       container.lastUsed = Date.now();
@@ -313,22 +284,37 @@ class SessionContainerPool {
   }
 
   /**
-   * Clean all data from a container's /app directory and temporary build artifacts
-   * This ensures no previous execution data remains when container is reused
+   * Clean all data from a container's /app directory and temporary build artifacts.
+   * Skipped for stateless executions when SKIP_STATELESS_CLEANUP is enabled.
    */
-  private async cleanContainer(containerId: string): Promise<void> {
+  private async cleanContainer(containerId: string, language?: string): Promise<void> {
+    // Skip cleanup for stateless languages (files are overwritten via putArchive anyway)
+    if (config.sessionContainers.skipStatelessCleanup && language && this.isStatelessLanguage(language)) {
+      console.log(`[Pool] Skipping cleanup for stateless ${language} container ${containerId.substring(0, 12)}`);
+      return;
+    }
+
     try {
-      // Remove all files from /app directory and clean temp/build artifacts
-      await execAsync(`docker exec ${containerId} sh -c "rm -rf /app/* /app/.* /tmp/* 2>/dev/null || true"`, { timeout: config.docker.commandTimeout });
+      await execInContainer(containerId, 'rm -rf /app/* /app/.* /tmp/* 2>/dev/null || true', {
+        timeout: config.docker.commandTimeout,
+      });
       console.log(`[Pool] Cleaned container ${containerId.substring(0, 12)}`);
     } catch (error: any) {
       console.error(`[Pool] Failed to clean container ${containerId.substring(0, 12)}:`, error.message);
-      // Don't throw - container can still be used
     }
   }
 
   /**
-   * Create a new container with networking
+   * Determine if a language produces stateless executions where cleanup can be skipped.
+   * Stateless: files are fully overwritten on each run (no persistent side effects).
+   */
+  private isStatelessLanguage(language: string): boolean {
+    return ['javascript', 'cpp', 'java'].includes(language);
+  }
+
+  /**
+   * Create a new container with networking via Docker SDK.
+   * Eliminates process-spawning overhead of `docker run`.
    */
   private async createContainer(
     language: string,
@@ -340,37 +326,32 @@ class SessionContainerPool {
     try {
       const memory = language === 'sql' ? config.docker.memorySQL : config.docker.memory;
 
-      let dockerCmd = [
-        'docker run -d',
-        `--label type=coderunner-session`,
-        `--label session=${sessionId}`,
-        `--label language=${language}`,
-        `--network ${networkName}`,
-        `--memory ${memory}`,
-        `--cpus ${config.docker.cpus}`,
-      ].join(' ');
+      const containerId = await dockerCreateContainer({
+        image: runtimeConfig.image,
+        labels: {
+          'type': 'coderunner-session',
+          'session': sessionId,
+          'language': language,
+        },
+        networkName,
+        memory,
+        cpus: config.docker.cpus,
+        env: language === 'sql' ? ['MYSQL_ROOT_PASSWORD=root'] : undefined,
+        cmd: language === 'sql' ? undefined : ['tail', '-f', '/dev/null'],
+      });
 
-      // MySQL needs special environment variables
-      if (language === 'sql') {
-        dockerCmd += ` -e MYSQL_ROOT_PASSWORD=root`;
-      }
-
-      dockerCmd += ` ${runtimeConfig.image}`;
-
-      // Add command to keep container alive (MySQL has its own entrypoint)
-      if (language !== 'sql') {
-        dockerCmd += ` tail -f /dev/null`;
-      }
-
-      console.log(`[Pool] Executing: ${dockerCmd}`);
-      const { stdout } = await execAsync(dockerCmd, { timeout: config.docker.commandTimeout });
-      const containerId = stdout.trim();
-      console.log(`[Pool] Container created successfully: ${containerId.substring(0, 12)}`);
+      console.log(`[Pool] Container created: ${containerId.substring(0, 12)} (${language})`);
 
       // For MySQL, wait for initialization with readiness polling
       if (language === 'sql') {
         console.log(`[Pool] Waiting for MySQL to initialize...`);
-        await this.waitForMySQLReady(containerId, 30000);
+        await waitForHealthy(
+          containerId,
+          'mysqladmin ping -u root -proot --silent',
+          30_000,
+          500,
+        );
+        console.log(`[Pool] MySQL ready in ${containerId.substring(0, 12)}`);
       }
 
       return containerId;
@@ -378,31 +359,6 @@ class SessionContainerPool {
       console.error(`[Pool] Failed to create container:`, error.message);
       throw error;
     }
-  }
-
-  /**
-   * Wait for MySQL container to become ready by polling mysqladmin ping.
-   * Returns as soon as MySQL responds, or throws if timeout is exceeded.
-   */
-  private async waitForMySQLReady(containerId: string, timeoutMs: number = 30000): Promise<void> {
-    const pollInterval = 1000; // 1 second between polls
-    const startTime = Date.now();
-
-    while (Date.now() - startTime < timeoutMs) {
-      try {
-        await execAsync(
-          `docker exec ${containerId} mysqladmin ping -u root -proot --silent`,
-          { timeout: 5000 }
-        );
-        console.log(`[Pool] MySQL is ready in container ${containerId.substring(0, 12)} (${Date.now() - startTime}ms)`);
-        return;
-      } catch {
-        // MySQL not ready yet, wait and retry
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-      }
-    }
-
-    throw new Error(`MySQL failed to become ready within ${timeoutMs}ms in container ${containerId.substring(0, 12)}`);
   }
 
   /**
@@ -416,29 +372,12 @@ class SessionContainerPool {
 
     console.log(`[Pool] Cleaning up ${sessionContainers.length} containers for session ${sessionId}`);
 
-    // Batch delete all containers for the session
     const containerIds = sessionContainers.map(c => c.containerId);
 
-    try {
-      if (containerIds.length > 0) {
-        await execAsync(`docker rm -fv ${containerIds.join(' ')}`, { timeout: config.docker.commandTimeout });
-        this.metrics.containersDeleted += containerIds.length;
-        console.log(`[Pool] Deleted ${containerIds.length} containers for session ${sessionId}`);
-      }
-    } catch (error: any) {
-      // If batch fails, try individually
-      console.error(`[Pool] Batch deletion failed for session ${sessionId}, trying individually:`, error.message);
-      this.metrics.cleanupErrors++;
-
-      for (const containerId of containerIds) {
-        try {
-          await execAsync(`docker rm -fv ${containerId}`, { timeout: config.docker.commandTimeout });
-          this.metrics.containersDeleted++;
-        } catch (individualError: any) {
-          console.error(`[Pool] Failed to delete container ${containerId.substring(0, 12)}:`, individualError.message);
-          this.metrics.cleanupErrors++;
-        }
-      }
+    if (containerIds.length > 0) {
+      await removeContainers(containerIds);
+      this.metrics.containersDeleted += containerIds.length;
+      console.log(`[Pool] Deleted ${containerIds.length} containers for session ${sessionId}`);
     }
 
     this.pool.delete(sessionId);
@@ -452,11 +391,10 @@ class SessionContainerPool {
     console.log('[Pool] Cleaning up all session containers...');
 
     try {
-      const { stdout } = await execAsync('docker ps -aq --filter label=type=coderunner-session');
-      if (stdout.trim()) {
-        const containerIds = stdout.trim().split('\n');
-        console.log(`[Pool] Found ${containerIds.length} containers to clean up`);
-        await execAsync(`docker rm -fv ${stdout.trim().replace(/\n/g, ' ')}`);
+      const allContainers = await listContainers({ 'type': 'coderunner-session' });
+      if (allContainers.length > 0) {
+        console.log(`[Pool] Found ${allContainers.length} containers to clean up`);
+        await removeContainers(allContainers.map((c) => c.id));
         console.log('[Pool] All session containers cleaned up');
       }
     } catch (error: any) {

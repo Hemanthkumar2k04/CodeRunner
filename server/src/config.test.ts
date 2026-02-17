@@ -38,7 +38,7 @@ describe('config', () => {
 
         it('should have session container configuration', () => {
             expect(config.sessionContainers).toBeDefined();
-            expect(config.sessionContainers.ttl).toBe(30000);
+            expect(config.sessionContainers.ttl).toBe(90000);
             expect(config.sessionContainers.cleanupInterval).toBe(30000);
             expect(config.sessionContainers.maxConcurrentSessions).toBe(50);
         });

@@ -1,31 +1,16 @@
 /**
  * Tests for SessionContainerPool
  * 
- * Since the pool interacts with Docker, we mock exec calls and test
- * the pool's logic (metrics, session management, stats) without Docker.
+ * Since the pool interacts with Docker via the SDK, we mock dockerClient
+ * and test the pool's logic (metrics, session management, stats) without Docker.
  */
 
-jest.mock('child_process', () => ({
-    exec: jest.fn((_cmd: string, _opts: any, callback?: Function) => {
-        if (callback) {
-            callback(null, { stdout: 'mock-container-id\n', stderr: '' });
-        }
-        return { stdout: '', stderr: '' };
-    }),
-}));
-
-jest.mock('util', () => ({
-    ...jest.requireActual('util'),
-    promisify: (fn: Function) => {
-        return (...args: any[]) => {
-            return new Promise((resolve, reject) => {
-                fn(...args, (error: any, result: any) => {
-                    if (error) reject(error);
-                    else resolve(result || { stdout: 'mock-container-id\n', stderr: '' });
-                });
-            });
-        };
-    },
+jest.mock('./dockerClient', () => ({
+    createContainer: jest.fn().mockResolvedValue('mock-container-id'),
+    execInContainer: jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 }),
+    removeContainers: jest.fn().mockResolvedValue(undefined),
+    listContainers: jest.fn().mockResolvedValue([]),
+    waitForHealthy: jest.fn().mockResolvedValue(undefined),
 }));
 
 import { sessionPool } from './pool';

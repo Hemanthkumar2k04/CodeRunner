@@ -58,18 +58,27 @@ CodeRunner is a distributed code execution platform that safely executes user co
 **Key Responsibilities**:
 
 - Render code editor with Monaco Editor integration
-- Manage file structure UI
+- Manage file structure UI with collapsible sidebar
 - Handle user interactions for code execution
 - Display real-time execution output via WebSocket
 - Support multi-console tabs for different file executions
+- Provide admin dashboard for system metrics and monitoring
 
 **Key Files**:
 
-- `App.tsx` - Main application component
-- `Workspace.tsx` - Main workspace layout
+- `App.tsx` - Main application component with routing to `/editor` by default
+- `Workspace.tsx` - Main workspace layout with collapsible sidebar support
 - `CodeEditor.tsx` - Monaco Editor integration
 - `Console.tsx` - Output display component
 - `FilePreview.tsx` - File explorer and management
+- `AdminPage.tsx` - Admin dashboard with system metrics and monitoring
+- `ResponsiveLayout.tsx` - Responsive layout with collapsible sidebar toggle
+
+**Recent Enhancements (Feb 2026)**:
+
+- Removed HomePage and LabPage components, routing now defaults to `/editor`
+- Implemented collapsible sidebar for better mobile/small screen experience  
+- Admin dashboard enhanced with real-time system metrics (CPU, memory, uptime)
 
 ### 2. Backend Server
 
@@ -209,6 +218,8 @@ Client                          Server
 
 ### 6. Network Management
 
+**Location**: `server/src/networkManager.ts`
+
 **Container Networking**:
 
 - Each session gets isolated Docker network
@@ -221,6 +232,16 @@ Client                          Server
 - Container-to-container communication
 - Network isolation between sessions
 - Automatic cleanup when session ends
+- **Mutex-based concurrent creation** to prevent race conditions during network setup
+- **Emergency cleanup procedures** to force-disconnect containers before network removal
+- **Thread-safe network creation** ensuring proper isolation in high-concurrency scenarios
+
+**Recent Enhancements (Feb 2026)**:
+
+- Added mutex locks for concurrent network creation operations
+- Implemented force-disconnect mechanism before network removal
+- Improved error handling for network cleanup edge cases
+- Enhanced resilience during high-load scenarios
 
 ## Request Lifecycle
 
@@ -350,6 +371,25 @@ All errors are streamed to client via WebSocket with descriptive messages.
 - Container TTL ensures cleanup
 - WebSocket authentication via session tokens
 
+### Authentication & Authorization
+
+- **Admin routes** now require `X-Admin-Key` header instead of query parameters
+- Admin key validation in production prevents unauthorized access
+- Improved error handling for missing/invalid ADMIN_KEY
+
+### Input Validation & Sanitization
+
+- File validation on upload to prevent malicious files
+- File path sanitization to prevent directory traversal attacks
+- Content validation before code execution
+- Protection against injection attacks
+
+**Recent Enhancements (Feb 2026)**:
+
+- Migrated admin authentication from query parameters to secure header-based auth
+- Added comprehensive file validation and sanitization routines
+- Enhanced error messages for security-related failures
+
 ## Monitoring & Metrics
 
 **Metrics Collected**:
@@ -360,11 +400,96 @@ All errors are streamed to client via WebSocket with descriptive messages.
 - Active containers
 - Container reuse rate
 - Network metrics
+- System metrics: CPU usage, memory consumption, uptime
+- Request latencies (with daily cap to prevent memory growth)
+
+**Metrics Interfaces**:
+
+```typescript
+interface SystemMetrics {
+  cpu: number;           // CPU usage percentage
+  memory: number;        // Memory usage in MB
+  uptime: number;        // Uptime in seconds
+  timestamp: number;     // Metric collection time
+}
+
+interface AdminMetrics {
+  requestCount: number;
+  requestLatencies: number[];  // Capped at daily limit
+  containerMetrics: ContainerMetrics;
+  networkMetrics: NetworkMetrics;
+  systemMetrics: SystemMetrics;
+}
+```
 
 **Endpoints**:
 
 - `GET /api/queue-stats` - Queue and execution metrics
-- `GET /api/admin/metrics` - System-wide metrics
+- `GET /api/admin/metrics` - System-wide metrics (requires X-Admin-Key header)
+
+**Recent Enhancements (Feb 2026)**:
+
+- Added SystemMetrics interface with CPU, memory, and uptime tracking
+- Implemented resource history tracking for visual representation
+- Added latency cap to AdminMetricsService to prevent unbounded memory growth
+- Enhanced admin dashboard with real-time metrics visualization
+- Improved metrics retrieval performance with optimized data structures
+
+## Recent Improvements (February 2026)
+
+### Frontend Enhancements
+
+1. **Simplified Routing**: Removed HomePage and LabPage components for streamlined navigation
+   - Default route `/` now redirects to `/editor`
+   - Reduced component complexity and bundle size
+   - All routes now redirect to editor on unknown paths
+
+2. **Collapsible Sidebar**: Implemented togglable workspace sidebar
+   - Improves space utilization on small screens
+   - Shows collapsed icon indicator in minimized state
+   - Smooth transitions between states
+   - Maintains state across navigation
+
+3. **Enhanced Admin Dashboard**: Real-time system monitoring
+   - Live CPU and memory usage tracking
+   - System uptime monitoring
+   - Historical data visualization
+   - Improved layout with navigation sidebar
+
+### Backend Enhancements
+
+1. **Network Management Improvements**
+   - Mutex-based locking for concurrent network creation
+   - Emergency cleanup procedures for force-disconnecting containers
+   - Prevention of race conditions in high-concurrency scenarios
+   - Code readability improvements and whitespace cleanup
+
+2. **Security Hardening**
+   - Migrated admin route authentication from query parameters to `X-Admin-Key` header
+   - Added file validation and sanitization on upload
+   - Improved error handling for production environments
+   - Protected against injection and traversal attacks
+
+3. **Metrics & Monitoring**
+   - Added latency cap in AdminMetricsService to prevent memory growth
+   - SystemMetrics interface for OS-level metrics (CPU, memory, uptime)
+   - Enhanced request latency tracking with daily limits
+   - Graceful shutdown improvements for proper resource cleanup
+
+4. **Container Pool Management**
+   - Mutex-based concurrent access to container pools
+   - Enhanced SessionContainerPool with thread-safe operations
+   - Added resetMetrics functionality for metrics reset
+
+### Quality Assurance
+
+- Added comprehensive test suite for configuration validation
+- Network manager test coverage
+- Session container pool tests
+- Test runner functionality tests
+- File utilities comprehensive test coverage
+- Store mutations comprehensive test coverage
+- Clipboard blocker functionality tests
 
 ## Future Enhancements
 

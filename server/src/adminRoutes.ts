@@ -7,6 +7,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { adminMetrics } from './adminMetrics';
 import { sessionPool } from './pool';
 import { getNetworkStats, getNetworkMetrics, getSubnetStats, resetNetworkMetrics } from './networkManager';
+import { pipelineMetrics } from './pipelineMetrics';
 
 import { config } from './config';
 
@@ -311,6 +312,14 @@ router.delete('/load-test-reports/:id', adminAuth, (req: Request, res: Response)
   } catch (error: any) {
     res.status(500).json({ error: `Failed to delete report: ${error.message}` });
   }
+});
+
+/**
+ * GET /admin/pipeline-metrics - Execution pipeline latency breakdown
+ * Returns per-stage p50/p95/p99 percentiles, by-language stats, and slow execution log
+ */
+router.get('/pipeline-metrics', adminAuth, (req: Request, res: Response) => {
+  res.json(pipelineMetrics.getStats());
 });
 
 export default router;
