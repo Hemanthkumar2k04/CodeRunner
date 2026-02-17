@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from './ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { PlayCircle, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { connectSocket, waitForConnection, getSocket } from '../lib/socket';
+import { cn } from '../lib/utils';
 
 interface TestProgress {
   current: number;
@@ -40,8 +41,17 @@ interface TestRunnerModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
+const AVAILABLE_LANGUAGES = [
+  { id: 'python', name: 'Python', color: 'bg-blue-500' },
+  { id: 'javascript', name: 'JavaScript', color: 'bg-yellow-500' },
+  { id: 'java', name: 'Java', color: 'bg-red-500' },
+  { id: 'cpp', name: 'C++', color: 'bg-purple-500' },
+] as const;
+
 export function TestRunnerModal({ open, onOpenChange }: TestRunnerModalProps) {
   const [intensity, setIntensity] = useState<string>('light');
+  const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [progress, setProgress] = useState<TestProgress | null>(null);
   const [result, setResult] = useState<TestResult | null>(null);
@@ -91,7 +101,14 @@ export function TestRunnerModal({ open, onOpenChange }: TestRunnerModalProps) {
   }, [open]);
 
   const handleStart = async () => {
-    console.log('[TestRunnerModal] handleStart called, intensity:', intensity);
+    console.log('[TestRunnerModal] handleStart called, intensity:', intensity, 'languages:', selectedLanguages);
+    
+    // Validate language selection
+    if (selectedLanguages.length === 0) {
+      setError('Please select at least one language');
+      return;
+    }
+    
     setError(null);
     
     // Ensure socket is connected
@@ -113,7 +130,7 @@ export function TestRunnerModal({ open, onOpenChange }: TestRunnerModalProps) {
     }
 
     console.log('[TestRunnerModal] Emitting loadtest:start event');
-    socket.emit('loadtest:start', { intensity });
+    socket.emit('loadtest:start', { intensity, languages: selectedLanguages });
   };
 
   const handleClose = () => {
@@ -124,7 +141,28 @@ export function TestRunnerModal({ open, onOpenChange }: TestRunnerModalProps) {
         setProgress(null);
         setResult(null);
         setError(null);
+        setSelectedLanguages([]);
       }, 300);
+    }
+  };
+
+  const toggleLanguage = (langId: string) => {
+    if (multiSelectMode) {
+      setSelectedLanguages(prev => 
+        prev.includes(langId) 
+          ? prev.filter(id => id !== langId)
+          : [...prev, langId]
+      );
+    } else {
+      setSelectedLanguages([langId]);
+    }
+  };
+
+  const toggleSelectMode = () => {
+    setMultiSelectMode(!multiSelectMode);
+    if (!multiSelectMode && selectedLanguages.length > 1) {
+      // When switching to single-select, keep only the first selected language
+      setSelectedLanguages(selectedLanguages.slice(0, 1));
     }
   };
 
@@ -138,11 +176,54 @@ export function TestRunnerModal({ open, onOpenChange }: TestRunnerModalProps) {
         <DialogHeader>
           <DialogTitle>Performance Load Test Runner</DialogTitle>
           <DialogDescription>
-            Run comprehensive load tests across all supported languages (Python, JavaScript, Java, C++)
+            Run comprehensive load tests on selected languages
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">
+          {/* Language Selection */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium">Select Languages</label>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={toggleSelectMode}
+                disabled={isRunning}
+                className="h-8 text-xs"
+              >
+                {multiSelectMode ? 'Single Select' : 'Multi Select'}
+              </Button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {AVAILABLE_LANGUAGES.map(lang => (
+                <button
+                  key={lang.id}
+                  onClick={() => toggleLanguage(lang.id)}
+                  disabled={isRunning}
+                  className={cn(
+                    'flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border-2 transition-all',
+                    'hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed',
+                    selectedLanguages.includes(lang.id)
+                      ? 'border-primary bg-primary/10 font-medium'
+                      : 'border-border bg-background'
+                  )}
+                >
+                  <div className={cn('w-3 h-3 rounded-full', lang.color)} />
+                  <span className="text-sm">{lang.name}</span>
+                </button>
+              ))}
+            </div>
+            {selectedLanguages.length > 0 && (
+              <div className="text-xs text-muted-foreground">
+                Selected: {selectedLanguages.map(id => 
+                  AVAILABLE_LANGUAGES.find(l => l.id === id)?.name
+                ).join(', ')}
+                {' '}({selectedLanguages.length * 2} tests: 1 simple + 1 complex per language)
+              </div>
+            )}
+          </div>
+
           {/* Intensity Selector */}
           <div className="space-y-2">
             <label className="text-sm font-medium">Test Intensity</label>
