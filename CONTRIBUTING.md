@@ -46,12 +46,15 @@ This project adheres to a Code of Conduct that all contributors are expected to 
 ### Setup Instructions
 
 1. **Run the setup script:**
+
    ```bash
    ./setup.sh
    ```
+
    This will build all Docker runtime images and install dependencies.
 
 2. **Start the development servers:**
+
    ```bash
    # Terminal 1 - Backend
    cd server && npm run dev
@@ -69,11 +72,13 @@ This project adheres to a Code of Conduct that all contributors are expected to 
 ### Reporting Bugs
 
 Before submitting a bug report:
+
 - Check if the issue has already been reported
 - Verify the bug exists in the latest version
 - Collect information about your environment
 
 When submitting a bug report, include:
+
 - Clear and descriptive title
 - Steps to reproduce the issue
 - Expected vs actual behavior
@@ -83,6 +88,7 @@ When submitting a bug report, include:
 ### Suggesting Features
 
 Feature suggestions are welcome! Please:
+
 - Use a clear and descriptive title
 - Provide detailed description of the proposed feature
 - Explain why this feature would be useful
@@ -102,6 +108,7 @@ We welcome code contributions! Here are areas where you can help:
 ## Pull Request Process
 
 1. **Update your fork** with the latest upstream changes:
+
    ```bash
    git fetch upstream
    git rebase upstream/main
@@ -114,17 +121,20 @@ We welcome code contributions! Here are areas where you can help:
    - Update documentation as needed
 
 3. **Test your changes**:
+
    ```bash
    ./run-tests.sh
    ```
 
 4. **Commit your changes** following the [commit message guidelines](#commit-message-guidelines):
+
    ```bash
    git add .
    git commit -m "feat: add new feature"
    ```
 
 5. **Push to your fork**:
+
    ```bash
    git push origin feature/your-feature-name
    ```
@@ -157,7 +167,10 @@ We welcome code contributions! Here are areas where you can help:
 
 ```typescript
 // ✅ Good
-const executeCode = async (code: string, language: string): Promise<ExecutionResult> => {
+const executeCode = async (
+  code: string,
+  language: string,
+): Promise<ExecutionResult> => {
   // Implementation
 };
 
@@ -264,6 +277,7 @@ If you have questions about contributing:
 ## Recognition
 
 Contributors will be recognized in:
+
 - GitHub's contributor list
 - Project documentation (if making significant contributions)
 
