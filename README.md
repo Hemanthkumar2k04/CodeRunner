@@ -94,6 +94,32 @@ For detailed testing information, visit `docs/testing.md`.
 - **Real-Time**: WebSocket (Socket.IO)
 - **Testing**: Jest, Vitest, Java Load Tester
 
+## Contributing
+
+We welcome contributions from the community! CodeRunner is open source and we'd love your help making it better.
+
+### How to Contribute
+
+1. **Fork the repository** and create your feature branch
+2. **Read our [Contributing Guide](CONTRIBUTING.md)** for detailed instructions
+3. **Follow our [Code of Conduct](CODE_OF_CONDUCT.md)** in all interactions
+4. **Submit a Pull Request** with your changes
+
+### Ways to Contribute
+
+- 🐛 Report bugs and issues
+- 💡 Suggest new features
+- 📝 Improve documentation
+- 🧪 Add or improve tests
+- 🔧 Fix bugs or implement features
+- 🎨 Enhance UI/UX
+
+Check out our [open issues](https://github.com/OWNER/CodeRunner/issues) to find tasks labeled `good first issue` for newcomers.
+
+For detailed guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 Developed by F.A.B.R.I.C Club of Easwari Engineering College
