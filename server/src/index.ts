@@ -3,6 +3,9 @@ require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') }
 
 import express from 'express';
 import cors from 'cors';
+import compression from 'compression';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { exec, spawn, execSync } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
@@ -15,6 +18,7 @@ import { getOrCreateSessionNetwork, deleteSessionNetwork, getNetworkName, cleanu
 import { kernelManager } from './kernelManager';
 import { putFiles, execInteractive, execInContainer, pingDaemon, imageExists, type FileEntry } from './dockerClient';
 import { pipelineMetrics, createStopwatch, type PipelineTimings } from './pipelineMetrics';
+import { logger } from './logger';
 
 import { adminMetrics } from './adminMetrics';
 import adminRoutes from './adminRoutes';
@@ -28,24 +32,20 @@ const { getReport } = require('../tests/utils/report-manager');
 (config.docker as any).cpusNotebook = process.env.DOCKER_CPUS_NOTEBOOK || '1';
 (config.docker as any).timeout = process.env.DOCKER_TIMEOUT || '30s';
 
-console.log('[Server] Loaded Docker config:', {
-  memory: config.docker.memory,
-  memorySQL: config.docker.memorySQL,
-  cpus: config.docker.cpus,
-});
+logger.info('Server', `Loaded Docker config: memory=${config.docker.memory}, memorySQL=${config.docker.memorySQL}, cpus=${config.docker.cpus}`);
 
 // Validate configuration at startup
 validateConfig();
 
 // Run aggressive cleanup on startup
 try {
-  console.log('[Server] Running startup cleanup...');
+  logger.info('Server', 'Running startup cleanup...');
   const cleanupScript = path.resolve(__dirname, '../../cleanup.sh');
   if (fs.existsSync(cleanupScript)) {
     execSync(`${cleanupScript} --silent`, { stdio: 'inherit' });
-    console.log('[Server] Startup cleanup completed');
+    logger.info('Server', 'Startup cleanup completed');
   } else {
-    console.warn('[Server] Cleanup script not found at:', cleanupScript);
+    logger.warn('Server', `Cleanup script not found at: ${cleanupScript}`);
   }
 
   // Clean orphaned temp directories from previous runs
@@ -53,7 +53,7 @@ try {
   if (fs.existsSync(tempBase)) {
     const orphaned = fs.readdirSync(tempBase).filter((d) => d.startsWith('runner-'));
     if (orphaned.length > 0) {
-      console.log(`[Server] Cleaning ${orphaned.length} orphaned temp directories`);
+      logger.info('Server', `Cleaning ${orphaned.length} orphaned temp directories`);
       for (const dir of orphaned) {
         try {
           fs.rmSync(path.join(tempBase, dir), { recursive: true, force: true });
@@ -62,16 +62,57 @@ try {
     }
   }
 } catch (error) {
-  console.error('[Server] Startup cleanup failed:', error);
+  logger.error('Server', `Startup cleanup failed: ${error}`);
 }
 
 const execAsync = promisify(exec);
 
 const app = express();
 const httpServer = createServer(app);
+
+// --- Security: CORS Origin Restriction ---
+// For local/LAN deployments: automatically allows the machine's own IP addresses
+// so other users on the network can access via http://<server-ip>:<port>.
+// Can be overridden with CORS_ORIGINS env var (comma-separated).
+import { networkInterfaces } from 'os';
+
+function buildAllowedOrigins(): string[] {
+  // Start with explicit overrides if set
+  if (process.env.CORS_ORIGINS) {
+    return process.env.CORS_ORIGINS.split(',').map(o => o.trim()).filter(Boolean);
+  }
+
+  // Auto-detect: localhost + all machine IPs, on common dev ports
+  const origins = new Set<string>();
+  const ports = [String(config.server.port), '5173', '3000'];
+  const hosts = ['localhost', '127.0.0.1'];
+
+  // Discover all non-internal IPv4 addresses on this machine
+  const ifaces = networkInterfaces();
+  for (const ifaceList of Object.values(ifaces)) {
+    if (!ifaceList) continue;
+    for (const iface of ifaceList) {
+      if (iface.family === 'IPv4') {
+        hosts.push(iface.address);
+      }
+    }
+  }
+
+  for (const host of hosts) {
+    for (const port of ports) {
+      origins.add(`http://${host}:${port}`);
+    }
+  }
+
+  return Array.from(origins);
+}
+
+const allowedOrigins = buildAllowedOrigins();
+logger.info('Server', `Allowed CORS origins: ${allowedOrigins.join(', ')}`);
+
 const io = new Server(httpServer, {
   cors: {
-    origin: "*",
+    origin: allowedOrigins,
     methods: ["GET", "POST"]
   }
 });
@@ -79,8 +120,20 @@ const io = new Server(httpServer, {
 const PORT = config.server.port;
 
 // Middleware
-app.use(cors());
+app.use(compression());  // Gzip/deflate compression for all responses
+app.use(helmet());  // Security headers (X-Content-Type-Options, X-Frame-Options, etc.)
+app.use(cors({ origin: allowedOrigins }));
 app.use(express.json({ limit: '10mb' }));
+
+// --- Rate Limiting: /api/run endpoint ---
+const apiRunLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: parseInt(process.env.RATE_LIMIT_API_RUN || '30', 10),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many execution requests. Please wait and try again.' },
+});
+app.use('/api/run', apiRunLimiter);
 
 // Admin routes - protected by key authentication
 app.use('/admin', adminRoutes);
@@ -251,14 +304,14 @@ class ExecutionQueue {
     const initialQueueLength = this.queue.length;
     this.queue = this.queue.filter(qt => {
       if (now - qt.timestamp > this.queueTimeout) {
-        console.warn(`[ExecutionQueue] Task timed out after ${this.queueTimeout}ms in queue`);
+        logger.warn('ExecutionQueue', `Task timed out after ${this.queueTimeout}ms in queue`);
         this.failedTasks++;
         return false;
       }
       return true;
     });
     if (this.queue.length < initialQueueLength) {
-      console.log(`[ExecutionQueue] Removed ${initialQueueLength - this.queue.length} expired tasks from queue`);
+      logger.info('ExecutionQueue', `Removed ${initialQueueLength - this.queue.length} expired tasks from queue`);
     }
 
     // Process tasks without blocking - key fix for concurrency
@@ -280,7 +333,7 @@ class ExecutionQueue {
           this.completedTasks++;
         })
         .catch((error) => {
-          console.error('[ExecutionQueue] Task error:', error);
+          logger.error('ExecutionQueue', `Task error: ${error?.message || error}`);
           this.failedTasks++;
         })
         .finally(() => {
@@ -341,24 +394,24 @@ export { executionQueue };
 // --- Kernel Manager Callbacks ---
 // Set up kernel output and status streaming to the owning socket only
 kernelManager.onOutput((kernelId, socketId, output) => {
-  console.log(`[Kernel Output] kernelId=${kernelId}, cellId=${output.cellId}, type=${output.type}, content=${output.content.substring(0, 50)}`);
+  logger.debug('Kernel', `Output: kernelId=${kernelId}, cellId=${output.cellId}, type=${output.type}`);
   // Send only to the owning socket for privacy
   io.to(socketId).emit('kernel:output', { kernelId, ...output });
 });
 
 kernelManager.onStatusChange((kernelId, socketId, status) => {
-  console.log(`[Kernel Status] kernelId=${kernelId}, status=${status}`);
+  logger.debug('Kernel', `Status: kernelId=${kernelId}, status=${status}`);
   io.to(socketId).emit('kernel:status', { kernelId, status });
 });
 
 kernelManager.onCellComplete((kernelId, socketId, cellId) => {
-  console.log(`[Kernel Cell Complete] kernelId=${kernelId}, cellId=${cellId}`);
+  logger.debug('Kernel', `Cell complete: kernelId=${kernelId}, cellId=${cellId}`);
   io.to(socketId).emit('kernel:cell_complete', { kernelId, cellId });
 });
 
 // --- WebSocket Handling ---
 io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
+  logger.info('Client', `Connected: ${socket.id}`);
 
   // Track client connection
   adminMetrics.trackClientConnected(socket.id);
@@ -368,6 +421,21 @@ io.on('connection', (socket) => {
   let currentLanguage: string | null = null;
   let currentSessionId: string | null = null;
   let manuallyStopped: boolean = false;
+
+  // --- Per-socket rate limiting for code execution ---
+  const socketRateLimit = { count: 0, windowStart: Date.now() };
+  const SOCKET_RATE_WINDOW = 10_000; // 10 seconds
+  const SOCKET_RATE_MAX = parseInt(process.env.RATE_LIMIT_SOCKET_RUN || '10', 10);
+
+  function checkSocketRateLimit(): boolean {
+    const now = Date.now();
+    if (now - socketRateLimit.windowStart > SOCKET_RATE_WINDOW) {
+      socketRateLimit.count = 0;
+      socketRateLimit.windowStart = now;
+    }
+    socketRateLimit.count++;
+    return socketRateLimit.count <= SOCKET_RATE_MAX;
+  }
 
   // Output buffering - batch chunks to reduce socket traffic and memory overhead
   // Instead of emitting every stdout/stderr chunk immediately, we buffer them and
@@ -406,6 +474,13 @@ io.on('connection', (socket) => {
 
   socket.on('run', async (data: { sessionId: string; language: string, files: File[] }) => {
     const { sessionId, language, files } = data;
+
+    // Per-socket rate limiting
+    if (!checkSocketRateLimit()) {
+      socket.emit('output', { sessionId, type: 'stderr', data: 'Rate limit exceeded. Please wait before running more code.\n' });
+      socket.emit('exit', { sessionId, code: 1 });
+      return;
+    }
 
     // Enqueue the execution task with configurable concurrency
     // Priority: WebSocket interactive requests get priority 2 (higher than API)
@@ -471,25 +546,25 @@ io.on('connection', (socket) => {
 
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-          console.log(`[Execution] Creating container for session ${socket.id.substring(0, 8)}, language ${language} (attempt ${attempt}/${maxRetries})`);
+          logger.info('Execution', `Creating container for session ${socket.id.substring(0, 8)}, language ${language} (attempt ${attempt}/${maxRetries})`);
           const networkName = await getOrCreateSessionNetwork(socket.id);
           const networkMs = sw.lap();
-          console.log(`[Execution] Network ready: ${networkName} (${networkMs}ms)`);
+          logger.info('Execution', `Network ready: ${networkName} (${networkMs}ms)`);
 
           // Check if container will be reused (before getOrCreate changes the state)
           const poolStats = sessionPool.getMetrics();
           containerId = await sessionPool.getOrCreateContainer(language, socket.id, networkName);
           const containerMs = sw.lap();
           containerReused = poolStats.containersReused < sessionPool.getMetrics().containersReused;
-          console.log(`[Execution] Container ready: ${containerId.substring(0, 12)} (${containerMs}ms, reused=${containerReused})`);
+          logger.info('Execution', `Container ready: ${containerId.substring(0, 12)} (${containerMs}ms, reused=${containerReused})`);
           break; // Success - exit retry loop
         } catch (e: any) {
           lastError = e;
-          console.error(`[Execution] Failed to acquire container (attempt ${attempt}/${maxRetries}):`, e.message);
+          logger.error('Execution', `Failed to acquire container (attempt ${attempt}/${maxRetries}): ${e.message}`);
 
           // Clean up the failed network before retrying
           await deleteSessionNetwork(socket.id).catch(cleanupErr =>
-            console.error(`[Execution] Failed to cleanup network after error:`, cleanupErr)
+            logger.error('Execution', `Failed to cleanup network after error: ${cleanupErr}`)
           );
 
           // If this was the last attempt, fail
@@ -537,9 +612,9 @@ io.on('connection', (socket) => {
 
         await putFiles(containerId, fileEntries);
         const fileTransferMs = sw.lap();
-        console.log(`[Execution] Files streamed to container (${fileTransferMs}ms, ${fileEntries.length} files)`);
+        logger.info('Execution', `Files streamed to container (${fileTransferMs}ms, ${fileEntries.length} files)`);
       } catch (err: any) {
-        cleanup().catch(e => console.error('[Cleanup] Error:', e));
+        cleanup().catch(e => logger.error('Cleanup', `Error: ${e}`));
         socket.emit('output', { sessionId, type: 'stderr', data: `System Error: ${err.message}\n` });
         socket.emit('exit', { sessionId, code: 1 });
         return;
@@ -612,7 +687,7 @@ io.on('connection', (socket) => {
             if (!manuallyStopped) {
               socket.emit('exit', { sessionId, code, executionTime });
             }
-            cleanup().catch(e => console.error('[Cleanup] Error:', e));
+            cleanup().catch(e => logger.error('Cleanup', `Error: ${e}`));
             resolve();
           };
 
@@ -622,15 +697,18 @@ io.on('connection', (socket) => {
           });
 
           // Fallback: if both streams close without 'end', use a timeout
+          // Parse timeout properly — strip non-numeric suffix (e.g. '30s' -> 30)
+          const timeoutSec = parseInt(config.docker.timeout.replace(/[^0-9]/g, ''), 10);
+          const timeoutMs = (timeoutSec > 0 ? timeoutSec : 30) * 1000;
           setTimeout(() => {
             if (!ended) onEnd();
-          }, parseInt(config.docker.timeout) * 1000 || 30_000);
+          }, timeoutMs);
         });
       } catch (err: any) {
-        console.error(`[Execution] Process error:`, err);
+        logger.error('Execution', `Process error: ${err.message}`);
         socket.emit('output', { sessionId, type: 'stderr', data: `Process Error: ${err.message}\n` });
         socket.emit('exit', { sessionId, code: 1 });
-        cleanup().catch(e => console.error('[Cleanup] Error:', e));
+        cleanup().catch(e => logger.error('Cleanup', `Error: ${e}`));
       }
     }, 2, language); // Priority 2 for interactive WebSocket requests
   });
@@ -657,7 +735,7 @@ io.on('connection', (socket) => {
       }
       socket.emit('output', { sessionId, type: 'system', data: '[Process terminated]\n' });
       socket.emit('exit', { sessionId, code: -1 });
-      cleanup().catch(e => console.error('[Cleanup] Error:', e));
+      cleanup().catch(e => logger.error('Cleanup', `Error: ${e}`));
     }
   });
 
@@ -673,8 +751,16 @@ io.on('connection', (socket) => {
     }
   });
 
+  // --- Kernel Ownership Validation ---
+  // All kernel operations (except start) verify that the kernel belongs to this socket.
+  // This prevents cross-session kernel hijacking.
+
   socket.on('kernel:execute', async (data: { kernelId: string; cellId: string; code: string }) => {
     const { kernelId, cellId, code } = data;
+    if (!kernelManager.verifyOwnership(kernelId, socket.id)) {
+      socket.emit('kernel:error', { kernelId, cellId, error: 'Unauthorized: kernel does not belong to this session' });
+      return;
+    }
     try {
       const executionCount = await kernelManager.executeCell(kernelId, cellId, code);
       socket.emit('kernel:execution_started', { kernelId, cellId, executionCount });
@@ -685,6 +771,10 @@ io.on('connection', (socket) => {
 
   socket.on('kernel:interrupt', async (data: { kernelId: string }) => {
     const { kernelId } = data;
+    if (!kernelManager.verifyOwnership(kernelId, socket.id)) {
+      socket.emit('kernel:error', { kernelId, error: 'Unauthorized: kernel does not belong to this session' });
+      return;
+    }
     try {
       await kernelManager.interruptKernel(kernelId);
       socket.emit('kernel:interrupted', { kernelId });
@@ -695,6 +785,10 @@ io.on('connection', (socket) => {
 
   socket.on('kernel:restart', async (data: { kernelId: string }) => {
     const { kernelId } = data;
+    if (!kernelManager.verifyOwnership(kernelId, socket.id)) {
+      socket.emit('kernel:error', { kernelId, error: 'Unauthorized: kernel does not belong to this session' });
+      return;
+    }
     try {
       await kernelManager.restartKernel(kernelId);
       socket.emit('kernel:restarted', { kernelId });
@@ -705,6 +799,10 @@ io.on('connection', (socket) => {
 
   socket.on('kernel:shutdown', async (data: { kernelId: string }) => {
     const { kernelId } = data;
+    if (!kernelManager.verifyOwnership(kernelId, socket.id)) {
+      socket.emit('kernel:error', { kernelId, error: 'Unauthorized: kernel does not belong to this session' });
+      return;
+    }
     try {
       await kernelManager.shutdownKernel(kernelId);
       socket.emit('kernel:shutdown_complete', { kernelId });
@@ -715,18 +813,18 @@ io.on('connection', (socket) => {
 
   // Load test runner handlers
   socket.on('loadtest:start', async (data: { intensity: string; languages?: string[] }) => {
-    console.log('[WebSocket] Received loadtest:start event:', data);
+    logger.info('WebSocket', `Received loadtest:start event: ${JSON.stringify(data)}`);
     try {
       const testId = await startLoadTest(data.intensity, data.languages);
       const testRunner = getTestRunner(testId);
 
       if (!testRunner) {
-        console.error('[WebSocket] Failed to create test runner');
+        logger.error('WebSocket', 'Failed to create test runner');
         socket.emit('loadtest:error', { error: 'Failed to create test runner' });
         return;
       }
 
-      console.log('[WebSocket] Test runner created:', testRunner.id);
+      logger.info('WebSocket', `Test runner created: ${testRunner.id}`);
 
       // Send initial acknowledgment
       socket.emit('loadtest:started', {
@@ -776,6 +874,8 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', async () => {
+    logger.info('Client', `Disconnected: ${socket.id}`);
+
     // Track client disconnection
     adminMetrics.trackClientDisconnected(socket.id);
 
@@ -785,7 +885,7 @@ io.on('connection', (socket) => {
     if (currentProcess) {
       currentProcess.kill();
     }
-    await cleanup().catch(e => console.error('[Cleanup] Error:', e));
+    await cleanup().catch(e => logger.error('Cleanup', `Error: ${e}`));
 
     // Clean up all session containers for this socket
     await sessionPool.cleanupSession(socket.id);
@@ -795,7 +895,7 @@ io.on('connection', (socket) => {
 
     // Clean up session network
     await deleteSessionNetwork(socket.id).catch(err =>
-      console.error(`[Disconnect] Failed to cleanup session network:`, err)
+      logger.error('Disconnect', `Failed to cleanup session network: ${err}`)
     );
   });
 
@@ -803,7 +903,7 @@ io.on('connection', (socket) => {
     if (containerId) {
       // Return container to pool (cleaned and TTL refreshed)
       await sessionPool.returnContainer(containerId, socket.id).catch(err =>
-        console.error(`[Cleanup] Failed to return container to pool:`, err)
+        logger.error('Cleanup', `Failed to return container to pool: ${err}`)
       );
       containerId = null;
     }
@@ -963,11 +1063,11 @@ async function executeWithSessionContainer(
       containerId = await sessionPool.getOrCreateContainer(language, sessionId, networkName);
       break;
     } catch (error: any) {
-      console.error(`[API] Failed to acquire container (attempt ${attempt}/${maxRetries}):`, error.message);
+      logger.error('API', `Failed to acquire container (attempt ${attempt}/${maxRetries}): ${error.message}`);
 
       if (networkCreated) {
         await deleteSessionNetwork(sessionId).catch(cleanupErr =>
-          console.error(`[API] Failed to cleanup network after error:`, cleanupErr)
+          logger.error('API', `Failed to cleanup network after error: ${cleanupErr}`)
         );
         networkCreated = false;
       }
@@ -1011,14 +1111,14 @@ async function executeWithSessionContainer(
 
     // Return container to pool
     await sessionPool.returnContainer(containerId, sessionId).catch(err =>
-      console.error(`[API] Failed to return container to pool:`, err)
+      logger.error('API', `Failed to return container to pool: ${err}`)
     );
 
     return { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode };
   } catch (error: any) {
     // Clean up network if execution failed
     await deleteSessionNetwork(sessionId).catch(cleanupErr =>
-      console.error(`[API] Failed to cleanup network after error:`, cleanupErr)
+      logger.error('API', `Failed to cleanup network after error: ${cleanupErr}`)
     );
 
     return { stdout: '', stderr: `System Error: ${error.message}`, exitCode: 1 };
@@ -1029,25 +1129,25 @@ async function executeWithSessionContainer(
 if (require.main === module) {
   // Global error handlers to prevent silent exits
   process.on('uncaughtException', (err) => {
-    console.error('Uncaught Exception:', err);
+    logger.error('Server', `Uncaught Exception: ${err}`);
   });
 
   process.on('unhandledRejection', (reason, promise) => {
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    logger.error('Server', `Unhandled Rejection: ${reason}`);
   });
 
   // Pre-flight checks
   async function preflightChecks(): Promise<void> {
-    console.log('[Preflight] Running Docker environment checks...');
+    logger.info('Preflight', 'Running Docker environment checks...');
 
     // Check Docker daemon via SDK (no process spawn)
     const isAlive = await pingDaemon();
     if (!isAlive) {
-      console.error('[Preflight] ✗ Docker daemon is not running or not accessible');
-      console.error('[Preflight]   Please ensure Docker is installed and running');
+      logger.error('Preflight', 'Docker daemon is not running or not accessible');
+      logger.error('Preflight', 'Please ensure Docker is installed and running');
       process.exit(1);
     }
-    console.log('[Preflight] ✓ Docker daemon is running');
+    logger.info('Preflight', 'Docker daemon is running');
 
     // Check if required runtime images exist via SDK
     const requiredImages = [
@@ -1061,33 +1161,33 @@ if (require.main === module) {
     for (const imageName of requiredImages) {
       const exists = await imageExists(imageName);
       if (exists) {
-        console.log(`[Preflight] ✓ ${imageName} image found`);
+        logger.info('Preflight', `${imageName} image found`);
       } else {
-        console.error(`[Preflight] ✗ ${imageName} image not found`);
-        console.error(`[Preflight]   Run: docker build -t ${imageName} runtimes/${imageName.replace('-runtime', '')}/`);
+        logger.error('Preflight', `${imageName} image not found`);
+        logger.error('Preflight', `Run: docker build -t ${imageName} runtimes/${imageName.replace('-runtime', '')}/`);
       }
     }
 
-    console.log('[Preflight] Pre-flight checks complete');
+    logger.info('Preflight', 'Pre-flight checks complete');
   }
 
   // Session pool uses on-demand containers - no initialization needed
-  console.log('[Server] Starting with session-based container pool (on-demand + TTL)');
+  logger.info('Server', 'Starting with session-based container pool (on-demand + TTL)');
 
   preflightChecks().then(async () => {
     // Clean up any orphaned networks from previous runs on startup
-    console.log('[Server] Cleaning up orphaned networks from previous runs...');
+    logger.info('Server', 'Cleaning up orphaned networks from previous runs...');
     await cleanupOrphanedNetworks(0).catch(err =>
-      console.error('[Startup] Failed to cleanup orphaned networks:', err)
+      logger.error('Server', `Failed to cleanup orphaned networks: ${err}`)
     );
 
     const server = httpServer.listen(Number(PORT), '0.0.0.0', () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-      console.log(`Network access: http://<your-ip-address>:${PORT}`);
+      logger.info('Server', `Server running on http://localhost:${PORT}`);
+      logger.info('Server', `Network access: http://<your-ip-address>:${PORT}`);
     });
 
     server.on('error', (err) => {
-      console.error('Server failed to start:', err);
+      logger.error('Server', `Server failed to start: ${err}`);
       process.exit(1);
     });
 
@@ -1109,12 +1209,12 @@ if (require.main === module) {
           // If we're under load (many sessions or errors), clean up more frequently
           if (sessionCount > 50 || metrics.cleanupErrors > 5) {
             containerCleanupInterval = Math.max(15000, containerCleanupInterval * 0.8); // Speed up, min 15s
-            console.log(`[Cleanup] High load detected (${sessionCount} sessions), reducing container cleanup interval to ${containerCleanupInterval / 1000}s`);
+            logger.info('Cleanup', `High load detected (${sessionCount} sessions), reducing container cleanup interval to ${containerCleanupInterval / 1000}s`);
           } else if (sessionCount < 10 && metrics.cleanupErrors === 0) {
             containerCleanupInterval = Math.min(60000, containerCleanupInterval * 1.1); // Slow down, max 60s
           }
         } catch (error) {
-          console.error('[Cleanup] Container cleanup error:', error);
+          logger.error('Cleanup', `Container cleanup error: ${error}`);
         }
       });
     };
@@ -1130,35 +1230,35 @@ if (require.main === module) {
           // Use aggressive bulk cleanup for very high orphan counts (>100)
           // This is based on the cleanup.sh script approach
           if (stats.empty > 100) {
-            console.warn(`[Cleanup] 🔥 CRITICAL: ${stats.empty} orphaned networks! Using aggressive bulk cleanup...`);
+            logger.warn('Cleanup', `CRITICAL: ${stats.empty} orphaned networks! Using aggressive bulk cleanup...`);
             await aggressiveBulkNetworkCleanup().catch(err =>
-              console.error('[Cleanup Job] Aggressive bulk cleanup failed:', err)
+              logger.error('Cleanup', `Aggressive bulk cleanup failed: ${err}`)
             );
           } else {
             // Use careful cleanup for moderate counts
             let maxAge = 60000; // Default 1 minute
             if (stats.empty > 50) {
               maxAge = 0; // Emergency: Clean all orphaned networks immediately
-              console.warn(`[Cleanup] Emergency network cleanup triggered (${stats.empty} orphaned networks)`);
+              logger.warn('Cleanup', `Emergency network cleanup triggered (${stats.empty} orphaned networks)`);
             } else if (stats.empty > 20) {
               maxAge = 30000; // Aggressive: 30 seconds
-              console.warn(`[Cleanup] Aggressive network cleanup (${stats.empty} orphaned networks)`);
+              logger.warn('Cleanup', `Aggressive network cleanup (${stats.empty} orphaned networks)`);
             }
 
             await cleanupOrphanedNetworks(maxAge).catch(err =>
-              console.error('[Cleanup Job] Orphaned networks cleanup failed:', err)
+              logger.error('Cleanup', `Orphaned networks cleanup failed: ${err}`)
             );
           }
 
           // Adapt network cleanup interval based on metrics
           if (stats.empty > 20 || networkMetrics.cleanupErrors > 5) {
             networkCleanupInterval = Math.max(30000, networkCleanupInterval * 0.7); // Speed up, min 30s
-            console.log(`[Cleanup] High orphaned networks (${stats.empty}), reducing network cleanup interval to ${networkCleanupInterval / 1000}s`);
+            logger.info('Cleanup', `High orphaned networks (${stats.empty}), reducing network cleanup interval to ${networkCleanupInterval / 1000}s`);
           } else if (stats.empty < 5 && networkMetrics.cleanupErrors === 0) {
             networkCleanupInterval = Math.min(300000, networkCleanupInterval * 1.2); // Slow down, max 5 minutes
           }
         } catch (error) {
-          console.error('[Cleanup] Network cleanup error:', error);
+          logger.error('Cleanup', `Network cleanup error: ${error}`);
         }
       });
     };
@@ -1186,11 +1286,11 @@ if (require.main === module) {
         const poolMetrics = sessionPool.getMetrics();
         const networkMetrics = getNetworkMetrics();
 
-        console.log(`[Network Stats] Total: ${stats.total}, Active: ${stats.withContainers}, Unused: ${stats.empty}`);
-        console.log(`[Container Stats] Created: ${poolMetrics.containersCreated}, Reused: ${poolMetrics.containersReused}, Deleted: ${poolMetrics.containersDeleted}, Errors: ${poolMetrics.cleanupErrors}`);
-        console.log(`[Network Metrics] Created: ${networkMetrics.networksCreated}, Deleted: ${networkMetrics.networksDeleted}, Escalation: ${networkMetrics.escalationLevel}, Errors: ${networkMetrics.cleanupErrors}`);
+        logger.info('Stats', `Network: Total=${stats.total}, Active=${stats.withContainers}, Unused=${stats.empty}`);
+        logger.info('Stats', `Containers: Created=${poolMetrics.containersCreated}, Reused=${poolMetrics.containersReused}, Deleted=${poolMetrics.containersDeleted}, Errors=${poolMetrics.cleanupErrors}`);
+        logger.info('Stats', `Networks: Created=${networkMetrics.networksCreated}, Deleted=${networkMetrics.networksDeleted}, Escalation=${networkMetrics.escalationLevel}, Errors=${networkMetrics.cleanupErrors}`);
       } catch (err) {
-        console.error('[Stats Job] Failed to get network stats:', err);
+        logger.error('Stats', `Failed to get network stats: ${err}`);
       }
     }, 300000);
 
@@ -1198,16 +1298,16 @@ if (require.main === module) {
     let isShuttingDown = false;
     const gracefulShutdown = async () => {
       if (isShuttingDown) {
-        console.log('\nForce shutdown - exiting immediately');
+        logger.info('Shutdown', 'Force shutdown - exiting immediately');
         process.exit(1);
       }
 
       isShuttingDown = true;
-      console.log('\nShutting down server...');
+      logger.info('Shutdown', 'Shutting down server...');
 
       // Set a hard timeout - exit after 5 seconds no matter what
       const shutdownTimeout = setTimeout(() => {
-        console.log('[Shutdown] Timeout reached - forcing exit');
+        logger.info('Shutdown', 'Timeout reached - forcing exit');
         process.exit(0);
       }, 5000);
 
@@ -1231,19 +1331,19 @@ if (require.main === module) {
 
         server.close(() => {
           clearTimeout(shutdownTimeout);
-          console.log('Server closed.');
+          logger.info('Shutdown', 'Server closed.');
           process.exit(0);
         });
 
         // If server.close doesn't fire callback, force exit after 1s
         setTimeout(() => {
           clearTimeout(shutdownTimeout);
-          console.log('[Shutdown] Server close timeout - exiting');
+          logger.info('Shutdown', 'Server close timeout - exiting');
           process.exit(0);
         }, 1000);
 
       } catch (error) {
-        console.error('[Shutdown] Error during cleanup:', error);
+        logger.error('Shutdown', `Error during cleanup: ${error}`);
         clearTimeout(shutdownTimeout);
         process.exit(1);
       }
@@ -1252,7 +1352,7 @@ if (require.main === module) {
     process.on('SIGINT', gracefulShutdown);
     process.on('SIGTERM', gracefulShutdown);
   }).catch((error) => {
-    console.error('[Server] Startup failed:', error);
+    logger.error('Server', `Startup failed: ${error}`);
     process.exit(1);
   });
 }

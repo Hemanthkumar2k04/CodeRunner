@@ -1,17 +1,23 @@
-import { spawn, ChildProcess, execSync } from 'child_process';
-import { promisify } from 'util';
-import { exec } from 'child_process';
 import * as fs from 'fs';
 import { config } from './config';
+import { logger } from './logger';
 import { getOrCreateSessionNetwork } from './networkManager';
-
-const execAsync = promisify(exec);
+import {
+  createContainer as dockerCreateContainer,
+  execInteractive,
+  putFiles,
+  removeContainers,
+  type FileEntry,
+} from './dockerClient';
 
 /**
  * Kernel Manager for Jupyter-like Notebook Execution
  * 
  * Manages persistent Python kernel processes for notebooks.
  * Each notebook gets its own kernel that maintains state between cell executions.
+ * 
+ * SECURITY: All Docker operations use the dockerode SDK (via dockerClient.ts).
+ * No shell commands are spawned, eliminating command injection risks.
  */
 
 // Output delimiters for parsing cell outputs
@@ -31,7 +37,13 @@ export interface KernelSession {
   notebookId: string;
   socketId: string;
   containerId: string;
-  process: ChildProcess | null;
+  process: {
+    stdout: NodeJS.ReadableStream;
+    stderr: NodeJS.ReadableStream;
+    stdin: NodeJS.WritableStream;
+    kill: () => void;
+    getExitCode: () => Promise<number>;
+  } | null;
   language: string;
   status: 'starting' | 'idle' | 'busy' | 'dead';
   executionCount: number;
@@ -156,7 +168,7 @@ class KernelManager {
   private cellCompleteCallback: ((kernelId: string, socketId: string, cellId: string) => void) | null = null;
 
   constructor() {
-    console.log('[KernelManager] Initialized notebook kernel manager');
+    logger.info('KernelManager', 'Initialized notebook kernel manager');
   }
 
   /**
@@ -181,6 +193,16 @@ class KernelManager {
   }
 
   /**
+   * Verify that a kernel belongs to the requesting socket.
+   * Prevents cross-session kernel hijacking.
+   */
+  verifyOwnership(kernelId: string, socketId: string): boolean {
+    const session = this.kernels.get(kernelId);
+    if (!session) return false;
+    return session.socketId === socketId;
+  }
+
+  /**
    * Start a new kernel for a notebook
    */
   async startKernel(
@@ -193,16 +215,16 @@ class KernelManager {
     if (existingKernelId) {
       const existingKernel = this.kernels.get(existingKernelId);
       if (existingKernel && existingKernel.status !== 'dead') {
-        console.log(`[KernelManager] Reusing existing kernel ${existingKernelId} for notebook ${notebookId}`);
+        logger.debug('KernelManager', `Reusing existing kernel ${existingKernelId} for notebook ${notebookId}`);
         return existingKernelId;
       }
     }
 
     const kernelId = `kernel-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    console.log(`[KernelManager] Starting kernel ${kernelId} for notebook ${notebookId}`);
+    logger.info('KernelManager', `Starting kernel ${kernelId} for notebook ${notebookId}`);
 
     try {
-      // Create container for kernel
+      // Create container for kernel via Docker SDK (no shell commands)
       const networkName = await getOrCreateSessionNetwork(socketId);
       const containerId = await this.createKernelContainer(kernelId, socketId, networkName, language);
 
@@ -230,16 +252,17 @@ class KernelManager {
       session.status = 'idle';
       this.emitStatus(kernelId, 'idle');
 
-      console.log(`[KernelManager] Kernel ${kernelId} started successfully`);
+      logger.info('KernelManager', `Kernel ${kernelId} started successfully`);
       return kernelId;
     } catch (error: any) {
-      console.error(`[KernelManager] Failed to start kernel:`, error.message);
+      logger.error('KernelManager', `Failed to start kernel: ${error.message}`);
       throw error;
     }
   }
 
   /**
-   * Create a Docker container for the kernel
+   * Create a Docker container for the kernel via SDK.
+   * SECURITY: Uses dockerode SDK instead of shell commands to eliminate injection.
    */
   private async createKernelContainer(
     kernelId: string,
@@ -252,56 +275,41 @@ class KernelManager {
       throw new Error(`Unsupported language for kernel: ${language}`);
     }
 
-    const dockerCmd = [
-      'docker run -d',
-      `--label type=coderunner-kernel`,
-      `--label kernel=${kernelId}`,
-      `--label session=${socketId}`,
-      `--network ${networkName}`,
-      `--memory ${config.docker.memorySQL}`,  // More memory for notebook kernels
-      `--cpus ${config.docker.cpusNotebook}`, // More CPU for notebook kernels
-      `-i`,  // Keep stdin open
-      runtimeConfig.image,
-      'tail -f /dev/null',  // Keep container alive
-    ].join(' ');
+    const containerId = await dockerCreateContainer({
+      image: runtimeConfig.image,
+      labels: {
+        'type': 'coderunner-kernel',
+        'kernel': kernelId,
+        'session': socketId,
+      },
+      networkName,
+      memory: config.docker.memorySQL,  // More memory for notebook kernels
+      cpus: config.docker.cpusNotebook,  // More CPU for notebook kernels
+    });
 
-    console.log(`[KernelManager] Executing: ${dockerCmd}`);
-    const { stdout } = await execAsync(dockerCmd, { timeout: config.docker.commandTimeout });
-    const containerId = stdout.trim();
-    console.log(`[KernelManager] Created kernel container ${containerId.substring(0, 12)}`);
+    logger.info('KernelManager', `Created kernel container ${containerId.substring(0, 12)}`);
     return containerId;
   }
 
   /**
-   * Start the Python kernel process inside the container
+   * Start the Python kernel process inside the container via SDK.
+   * SECURITY: Uses putFiles() + execInteractive() instead of docker cp + docker exec CLI.
    */
   private async startKernelProcess(session: KernelSession): Promise<void> {
-    // Write the kernel script to a temp file on host, then copy to container
-    const tempScriptPath = `/tmp/kernel-${session.kernelId}.py`;
-    fs.writeFileSync(tempScriptPath, PYTHON_KERNEL_SCRIPT);
+    // Stream kernel script directly into container via SDK (zero host I/O for docker cp)
+    const kernelFile: FileEntry = {
+      path: 'kernel.py',
+      content: PYTHON_KERNEL_SCRIPT,
+    };
+    await putFiles(session.containerId, [kernelFile]);
 
-    try {
-      // Copy script to container
-      await execAsync(`docker cp "${tempScriptPath}" ${session.containerId}:/app/kernel.py`, { timeout: config.docker.commandTimeout });
-
-      // Clean up temp file
-      fs.unlinkSync(tempScriptPath);
-    } catch (err) {
-      console.error(`[KernelManager] Failed to copy kernel script:`, err);
-      try { fs.unlinkSync(tempScriptPath); } catch { }
-      throw err;
-    }
-
-    // Start the kernel process
-    const process = spawn('docker', [
-      'exec', '-i',
+    // Start the kernel process via SDK interactive exec (replaces spawn('docker', ['exec', ...]))
+    const execSession = await execInteractive(
       session.containerId,
-      'python', '-u', '/app/kernel.py'
-    ], {
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
+      'python -u /app/kernel.py',
+    );
 
-    session.process = process;
+    session.process = execSession;
 
     let currentOutput = '';
     let currentCellId: string | null = null;
@@ -322,25 +330,25 @@ class KernelManager {
       };
 
       // Check stdout for ready signal
-      process.stdout.once('data', (data: Buffer) => {
+      execSession.stdout.once('data', (data: Buffer) => {
         checkReady(data.toString());
       });
 
-      process.on('error', (err) => {
+      execSession.stdout.on('error', (err: Error) => {
         clearTimeout(timeout);
         reject(err);
       });
 
-      process.on('close', (code) => {
+      execSession.stdout.on('end', () => {
         if (!isReady) {
           clearTimeout(timeout);
-          reject(new Error(`Kernel process exited with code ${code} before becoming ready`));
+          reject(new Error('Kernel process exited before becoming ready'));
         }
       });
     });
 
     // Handle stdout
-    process.stdout.on('data', (data: Buffer) => {
+    execSession.stdout.on('data', (data: Buffer) => {
       const text = data.toString();
 
       // Skip the ready signal in output processing
@@ -388,9 +396,9 @@ class KernelManager {
     });
 
     // Handle stderr
-    process.stderr.on('data', (data: Buffer) => {
+    execSession.stderr.on('data', (data: Buffer) => {
       const text = data.toString();
-      console.log(`[KernelManager] stderr: ${text}`);
+      logger.debug('KernelManager', `stderr: ${text}`);
       if (currentCellId) {
         const isErrorMarker = text.includes(CELL_ERROR_MARKER);
         this.emitOutput(session.kernelId, {
@@ -401,23 +409,17 @@ class KernelManager {
       }
     });
 
-    // Handle process exit
-    process.on('close', (code) => {
-      console.log(`[KernelManager] Kernel ${session.kernelId} process exited with code ${code}`);
+    // Handle stream end (process exit)
+    execSession.stdout.on('end', () => {
+      logger.info('KernelManager', `Kernel ${session.kernelId} process exited`);
       session.status = 'dead';
       session.process = null;
       this.emitStatus(session.kernelId, 'dead');
     });
 
-    process.on('error', (err) => {
-      console.error(`[KernelManager] Kernel ${session.kernelId} process error:`, err);
-      session.status = 'dead';
-      this.emitStatus(session.kernelId, 'dead');
-    });
-
     // Wait for kernel to be ready
     await readyPromise;
-    console.log(`[KernelManager] Kernel ${session.kernelId} is ready`);
+    logger.info('KernelManager', `Kernel ${session.kernelId} is ready`);
   }
 
   /**
@@ -456,7 +458,8 @@ class KernelManager {
   }
 
   /**
-   * Interrupt a running kernel
+   * Interrupt a running kernel.
+   * SECURITY: Uses SDK exec instead of shell `docker exec` command.
    */
   async interruptKernel(kernelId: string): Promise<void> {
     const session = this.kernels.get(kernelId);
@@ -465,12 +468,13 @@ class KernelManager {
     }
 
     if (session.process) {
-      // Send SIGINT to the process inside the container
       try {
-        await execAsync(`docker exec ${session.containerId} pkill -SIGINT -f kernel.py`);
-        console.log(`[KernelManager] Interrupted kernel ${kernelId}`);
+        // Use SDK to execute pkill inside the container (no shell interpolation)
+        const { execInContainer } = await import('./dockerClient');
+        await execInContainer(session.containerId, 'pkill -SIGINT -f kernel.py', { timeout: 5000 });
+        logger.info('KernelManager', `Interrupted kernel ${kernelId}`);
       } catch (error) {
-        console.error(`[KernelManager] Failed to interrupt kernel:`, error);
+        logger.error('KernelManager', `Failed to interrupt kernel: ${error}`);
       }
     }
   }
@@ -484,9 +488,9 @@ class KernelManager {
       throw new Error(`Kernel ${kernelId} not found`);
     }
 
-    console.log(`[KernelManager] Restarting kernel ${kernelId}`);
+    logger.info('KernelManager', `Restarting kernel ${kernelId}`);
 
-    // Kill existing process
+    // Kill existing process via SDK stream destroy
     if (session.process) {
       session.process.kill();
       session.process = null;
@@ -503,11 +507,12 @@ class KernelManager {
 
     session.status = 'idle';
     this.emitStatus(kernelId, 'idle');
-    console.log(`[KernelManager] Kernel ${kernelId} restarted`);
+    logger.info('KernelManager', `Kernel ${kernelId} restarted`);
   }
 
   /**
-   * Shutdown a kernel
+   * Shutdown a kernel.
+   * SECURITY: Uses SDK removeContainers() instead of shell `docker rm -f`.
    */
   async shutdownKernel(kernelId: string): Promise<void> {
     const session = this.kernels.get(kernelId);
@@ -515,26 +520,30 @@ class KernelManager {
       return;
     }
 
-    console.log(`[KernelManager] Shutting down kernel ${kernelId}`);
+    logger.info('KernelManager', `Shutting down kernel ${kernelId}`);
 
     // Send shutdown command
     if (session.process && session.process.stdin) {
-      session.process.stdin.write('__SHUTDOWN__\n');
+      try {
+        session.process.stdin.write('__SHUTDOWN__\n');
+      } catch {
+        // Stream may already be closed
+      }
       session.process.kill();
     }
 
-    // Remove container
+    // Remove container via SDK (no shell command)
     try {
-      await execAsync(`docker rm -f ${session.containerId}`);
+      await removeContainers([session.containerId]);
     } catch (error) {
-      console.error(`[KernelManager] Failed to remove container:`, error);
+      logger.error('KernelManager', `Failed to remove container: ${error}`);
     }
 
     // Clean up maps
     this.kernels.delete(kernelId);
     this.notebookKernels.delete(session.notebookId);
 
-    console.log(`[KernelManager] Kernel ${kernelId} shut down`);
+    logger.info('KernelManager', `Kernel ${kernelId} shut down`);
   }
 
   /**

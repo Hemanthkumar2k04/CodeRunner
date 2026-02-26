@@ -6,6 +6,7 @@
 import { spawn } from 'child_process';
 import path from 'path';
 import { EventEmitter } from 'events';
+import { logger } from './logger';
 
 const testRunners = new Map<string, TestRunner>();
 
@@ -39,12 +40,12 @@ class TestRunner extends EventEmitter {
 
     async run(): Promise<void> {
         const scriptPath = path.join(__dirname, '../tests/run-tests.js');
-        
+
         const args = [scriptPath, this.intensity];
         if (this.languages && this.languages.length > 0) {
             args.push(`--languages=${this.languages.join(',')}`);
         }
-        
+
         this.process = spawn('node', args, {
             cwd: path.join(__dirname, '../..'),
             env: process.env
@@ -56,7 +57,7 @@ class TestRunner extends EventEmitter {
         this.process.stdout.on('data', (data: Buffer) => {
             const text = data.toString();
             output += text;
-            
+
             // Parse progress from output
             this.parseProgress(text);
         });
@@ -71,7 +72,7 @@ class TestRunner extends EventEmitter {
 
                 if (code === 0) {
                     this.status = 'completed';
-                    
+
                     // Extract report ID from output
                     const reportMatch = output.match(/Report ID: (loadtest-\d+-\d+)/);
                     if (reportMatch) {
@@ -86,7 +87,7 @@ class TestRunner extends EventEmitter {
                     resolve();
                 } else {
                     this.status = 'failed';
-                    
+
                     this.emit('error', {
                         code,
                         message: errorOutput || 'Test failed'
@@ -99,7 +100,7 @@ class TestRunner extends EventEmitter {
             this.process.on('error', (error: Error) => {
                 this.endTime = Date.now();
                 this.status = 'failed';
-                
+
                 this.emit('error', {
                     message: error.message
                 });
@@ -115,7 +116,7 @@ class TestRunner extends EventEmitter {
         if (progressMatch) {
             const current = parseInt(progressMatch[1]);
             const total = parseInt(progressMatch[2]);
-            
+
             this.emit('progress', {
                 current,
                 total,
@@ -166,14 +167,14 @@ export async function startLoadTest(
 
     // Generate test ID
     const testId = `test_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    
+
     // Create test runner
     const runner = new TestRunner(testId, intensity, languages);
     testRunners.set(testId, runner);
 
     // Start test asynchronously
     runner.run().catch(error => {
-        console.error(`Test ${testId} failed:`, error);
+        logger.error('TestRunner', `Test ${testId} failed: ${error}`);
     }).finally(() => {
         // Clean up after a while
         setTimeout(() => {
@@ -212,7 +213,7 @@ export function getActiveTests() {
         intensity: runner.intensity,
         status: runner.status,
         startTime: runner.startTime,
-        duration: runner.endTime 
+        duration: runner.endTime
             ? runner.endTime - runner.startTime
             : Date.now() - runner.startTime
     }));

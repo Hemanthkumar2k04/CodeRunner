@@ -4,6 +4,8 @@
  * Environment variables override defaults
  */
 
+import { logger } from './logger';
+
 export const config = {
   // === Server Configuration ===
   server: {
@@ -20,7 +22,7 @@ export const config = {
     memorySQL: process.env.DOCKER_MEMORY_SQL || '1024m', // SQL containers need more memory
     cpus: process.env.DOCKER_CPUS || '0.5',
     cpusNotebook: process.env.DOCKER_CPUS_NOTEBOOK || '1', // Notebook kernels get more CPU
-    
+
     // Timeouts
     timeout: process.env.DOCKER_TIMEOUT || '30s', // Process execution timeout
     commandTimeout: parseInt(process.env.DOCKER_CMD_TIMEOUT || '15000', 10), // Docker command timeout (ms)
@@ -32,7 +34,7 @@ export const config = {
     sessionNetworkPrefix: process.env.NETWORK_PREFIX || 'coderunner-session-',
     networkDriver: 'bridge',
     networkLabel: 'type=coderunner',
-    
+
     // Subnet allocation pools (must match /etc/docker/daemon.json)
     subnetPools: [
       {
@@ -56,10 +58,10 @@ export const config = {
     ttl: parseInt(process.env.SESSION_TTL || '90000', 10), // 90 seconds (increased from 30s for better reuse)
     cleanupInterval: parseInt(process.env.CLEANUP_INTERVAL || '30000', 10), // 30 seconds
     orphanedNetworkAge: parseInt(process.env.ORPHANED_NETWORK_AGE || '300000', 10), // 5 minutes
-    
+
     // Concurrency control for parallel execution requests
     maxConcurrentSessions: parseInt(process.env.MAX_CONCURRENT_SESSIONS || '50', 10),
-    
+
     // Pooling configuration
     maxPerSession: parseInt(process.env.MAX_CONTAINERS_PER_SESSION || '10', 10),
     autoCleanup: process.env.AUTO_CLEANUP !== 'false',
@@ -130,7 +132,7 @@ export function validateConfig(): void {
   }
 
   const totalSubnetCapacity = config.network.subnetPools.reduce((sum, pool) => sum + pool.capacity, 0);
-  console.log(`[Config] Network capacity: ${totalSubnetCapacity} concurrent sessions`);
+  logger.info('Config', `Network capacity: ${totalSubnetCapacity} concurrent sessions`);
 }
 
 /**

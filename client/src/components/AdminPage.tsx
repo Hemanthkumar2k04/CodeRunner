@@ -117,6 +117,156 @@ interface DailyMetrics {
 
 const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b', '#ef4444'];
 
+const LOG_LEVEL_COLORS: Record<string, string> = {
+  debug: 'text-zinc-400',
+  info: 'text-blue-400',
+  warn: 'text-yellow-400',
+  error: 'text-red-400',
+};
+
+const LOG_LEVEL_BG: Record<string, string> = {
+  debug: 'bg-zinc-800/50',
+  info: 'bg-blue-950/30',
+  warn: 'bg-yellow-950/30',
+  error: 'bg-red-950/30',
+};
+
+interface LogEntry {
+  id: number;
+  timestamp: string;
+  level: string;
+  category: string;
+  message: string;
+}
+
+function LogsTab({ adminKey }: { adminKey: string }) {
+  const [entries, setEntries] = useState<LogEntry[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [summary, setSummary] = useState<Record<string, number>>({});
+  const [levelFilter, setLevelFilter] = useState<string>('');
+  const [categoryFilter, setCategoryFilter] = useState<string>('');
+  const [search, setSearch] = useState<string>('');
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const logsEndRef = useRef<HTMLDivElement>(null);
+
+  const fetchLogs = useCallback(async () => {
+    if (!adminKey) return;
+    const params = new URLSearchParams({ limit: '200' });
+    if (levelFilter) params.set('level', levelFilter);
+    if (categoryFilter) params.set('category', categoryFilter);
+    if (search) params.set('search', search);
+
+    try {
+      const res = await fetch(`/admin/logs?${params}`, {
+        headers: { 'X-Admin-Key': adminKey },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setEntries(data.entries);
+        setCategories(data.categories);
+        setSummary(data.summary);
+      }
+    } catch { /* ignore fetch errors */ }
+  }, [adminKey, levelFilter, categoryFilter, search]);
+
+  useEffect(() => {
+    fetchLogs();
+    if (!autoRefresh) return;
+    const interval = setInterval(fetchLogs, 3000);
+    return () => clearInterval(interval);
+  }, [fetchLogs, autoRefresh]);
+
+  return (
+    <div className="space-y-4">
+      {/* Summary counts */}
+      <div className="flex gap-3 flex-wrap">
+        {(['debug', 'info', 'warn', 'error'] as const).map(level => (
+          <button
+            key={level}
+            onClick={() => setLevelFilter(levelFilter === level ? '' : level)}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${levelFilter === level
+              ? 'border-primary bg-primary/20 text-primary'
+              : 'border-border bg-card hover:bg-accent'
+              }`}
+          >
+            <span className={LOG_LEVEL_COLORS[level]}>{level.toUpperCase()}</span>
+            <span className="ml-2 text-muted-foreground">{summary[level] ?? 0}</span>
+          </button>
+        ))}
+        <div className="flex-1" />
+        <button
+          onClick={() => setAutoRefresh(!autoRefresh)}
+          className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${autoRefresh
+            ? 'border-green-600 bg-green-950/30 text-green-400'
+            : 'border-border bg-card text-muted-foreground'
+            }`}
+        >
+          {autoRefresh ? '● Live' : '○ Paused'}
+        </button>
+        <button
+          onClick={fetchLogs}
+          className="px-3 py-1.5 rounded-md text-xs font-medium border border-border bg-card hover:bg-accent text-muted-foreground"
+        >
+          <RefreshCw className="w-3 h-3" />
+        </button>
+      </div>
+
+      {/* Filters */}
+      <div className="flex gap-3">
+        <select
+          value={categoryFilter}
+          onChange={e => setCategoryFilter(e.target.value)}
+          className="px-3 py-1.5 rounded-md text-sm border border-border bg-card text-foreground"
+        >
+          <option value="">All Categories</option>
+          {categories.map(c => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+        <Input
+          placeholder="Search logs..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="max-w-xs h-8 text-sm"
+        />
+      </div>
+
+      {/* Log entries */}
+      <div className="rounded-lg border border-border bg-card overflow-hidden">
+        <div className="max-h-[600px] overflow-y-auto font-mono text-xs">
+          {entries.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground">No log entries found</div>
+          ) : (
+            entries.map(entry => (
+              <div
+                key={entry.id}
+                className={`px-3 py-1.5 border-b border-border/50 flex items-start gap-3 ${LOG_LEVEL_BG[entry.level] || ''}`}
+              >
+                <span className="text-muted-foreground whitespace-nowrap w-[160px] shrink-0">
+                  {new Date(entry.timestamp).toLocaleTimeString('en-US', {
+                    hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit',
+                    fractionalSecondDigits: 3,
+                  } as Intl.DateTimeFormatOptions)}
+                </span>
+                <span className={`uppercase w-[44px] shrink-0 font-semibold ${LOG_LEVEL_COLORS[entry.level] || ''}`}>
+                  {entry.level}
+                </span>
+                <span className="text-purple-400 w-[140px] shrink-0 truncate">
+                  {entry.category}
+                </span>
+                <span className="text-foreground break-all">
+                  {entry.message}
+                </span>
+              </div>
+            ))
+          )}
+          <div ref={logsEndRef} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function AdminPage() {
   const navigate = useNavigate();
 
@@ -138,18 +288,15 @@ export function AdminPage() {
   const isFetchingRef = useRef(false);
 
   const fetchStats = useCallback(async () => {
-    console.log('[AdminPage] fetchStats called, adminKey:', adminKey ? 'present' : 'missing', 'isFetching:', isFetchingRef.current);
     if (!adminKey) return;
 
     // If already fetching, don't start a new request (prevents React Strict Mode double-mount issues)
     if (isFetchingRef.current) {
-      console.log('[AdminPage] Already fetching, skipping...');
       return;
     }
 
     // Only set loading on initial fetch (first time)
     if (!hasLoadedOnceRef.current) {
-      console.log('[AdminPage] First fetch, setting loading=true');
       setLoading(true);
     }
 
@@ -163,7 +310,6 @@ export function AdminPage() {
     abortControllerRef.current = new AbortController();
 
     try {
-      console.log('[AdminPage] Fetching /admin/stats...');
       const response = await fetch(`/admin/stats`, {
         signal: abortControllerRef.current.signal,
         cache: 'no-store', // Prevent caching
@@ -182,7 +328,6 @@ export function AdminPage() {
         throw new Error('Failed to fetch stats');
       }
       const data = await response.json();
-      console.log('[AdminPage] Stats received, setting state');
       setStats(data);
 
       if (data.server.resources) {
@@ -202,12 +347,10 @@ export function AdminPage() {
       setError(null);
       hasLoadedOnceRef.current = true;
     } catch (err: any) {
-      console.log('[AdminPage] Fetch error:', err.name, err.message);
       if (err.name !== 'AbortError') {
         setError(err.message);
       }
     } finally {
-      console.log('[AdminPage] Fetch complete, setting loading=false');
       setLoading(false);
       setRefreshing(false);
       isFetchingRef.current = false;
@@ -217,12 +360,10 @@ export function AdminPage() {
   // Load saved key from localStorage on mount
   useEffect(() => {
     const savedKey = sessionStorage.getItem('adminKey');
-    console.log('[AdminPage] Checking for saved key:', savedKey ? 'found' : 'not found');
     if (savedKey) {
       setAdminKey(savedKey);
       setIsAuthenticated(true);
       setLoading(true); // Set loading immediately when we have a saved key
-      console.log('[AdminPage] Set authenticated and loading');
     }
   }, []);
 
@@ -230,14 +371,11 @@ export function AdminPage() {
   useEffect(() => {
     if (!isAuthenticated || !adminKey) return;
 
-    console.log('[AdminPage] useEffect triggered - fetching stats');
     fetchStats();
     const interval = setInterval(() => {
-      console.log('[AdminPage] Interval fetch');
       fetchStats();
     }, 5000);
     return () => {
-      console.log('[AdminPage] Cleanup - clearing interval');
       clearInterval(interval);
     };
   }, [isAuthenticated, adminKey]);
@@ -334,7 +472,6 @@ export function AdminPage() {
 
   // Show login form if not authenticated
   if (!isAuthenticated) {
-    console.log('[AdminPage] Rendering: Login form');
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
         <Card className="w-full max-w-md animate-in fade-in duration-500">
@@ -389,7 +526,6 @@ export function AdminPage() {
   }
 
   if (loading && !stats) {
-    console.log('[AdminPage] Rendering: Loading skeleton');
     return (
       <div className="min-h-screen bg-background p-6">
         <div className="max-w-7xl mx-auto space-y-6">
@@ -408,7 +544,6 @@ export function AdminPage() {
 
   // Show error state only when there's an actual error
   if (error) {
-    console.log('[AdminPage] Rendering: Error screen', error);
     return (
       <div className="min-h-screen bg-background p-6 flex items-center justify-center">
         <Card className="max-w-md w-full">
@@ -437,7 +572,6 @@ export function AdminPage() {
 
   // Defensive check - if no stats and no loading/error, something went wrong
   if (!stats) {
-    console.log('[AdminPage] Rendering: Defensive error (no stats)', { loading, error, isAuthenticated });
     return (
       <div className="min-h-screen bg-background p-6 flex items-center justify-center">
         <Card className="max-w-md w-full">
@@ -464,7 +598,7 @@ export function AdminPage() {
     );
   }
 
-  console.log('[AdminPage] Rendering: Dashboard with stats');
+
 
   const latencyData = [
     { name: 'Avg', value: stats.metrics.today.latency.average },
@@ -818,7 +952,7 @@ export function AdminPage() {
 
           {/* Placeholders for other tabs */}
           {activeTab === 'containers' && <div className="p-10 text-center text-muted-foreground">Detailed container management coming soon...</div>}
-          {activeTab === 'logs' && <div className="p-10 text-center text-muted-foreground">Log viewer coming soon...</div>}
+          {activeTab === 'logs' && <LogsTab adminKey={adminKey} />}
           {activeTab === 'settings' && <div className="p-10 text-center text-muted-foreground">Settings panel coming soon...</div>}
 
         </div>

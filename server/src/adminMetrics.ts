@@ -4,6 +4,7 @@
  */
 
 import * as os from 'os';
+import { logger } from './logger';
 
 export interface RequestMetrics {
   requestId: string;
@@ -445,7 +446,7 @@ class AdminMetricsService {
     for (const date of this.dailyMetrics.keys()) {
       if (date < cutoffDate) {
         this.dailyMetrics.delete(date);
-        console.log(`[AdminMetrics] Cleaned up metrics for date: ${date}`);
+        logger.info('AdminMetrics', `Cleaned up metrics for date: ${date}`);
       }
     }
   }
@@ -479,7 +480,7 @@ class AdminMetricsService {
     // Re-initialize today's metrics
     this.initializeDailyMetrics(this.getTodayDate());
 
-    console.log('[AdminMetrics] All metrics have been reset');
+    logger.info('AdminMetrics', 'All metrics have been reset');
   }
 }
 

@@ -1,4 +1,5 @@
 import { config } from './config';
+import { logger } from './logger';
 import {
   createNetwork as dockerCreateNetwork,
   networkExists as dockerNetworkExists,
@@ -57,7 +58,7 @@ export function resetNetworkMetrics(): void {
   networkMetrics.orphanedNetworkCount = currentOrphaned; // Preserve current orphaned state
   networkMetrics.escalationLevel = 0;
 
-  console.log('[NetworkManager] Metrics reset');
+  logger.info('NetworkManager', 'Metrics reset');
 }
 
 /**
@@ -90,7 +91,7 @@ class SubnetAllocator {
       }
     }
 
-    console.error('[SubnetAllocator] All address pools exhausted!');
+    logger.error('SubnetAllocator', 'All address pools exhausted!');
     return null;
   }
 
@@ -167,14 +168,14 @@ export async function getOrCreateSessionNetwork(sessionId: string): Promise<stri
   // Fast path: if network exists, return immediately
   const exists = await networkExists(networkName);
   if (exists) {
-    console.log(`[NetworkManager] Network already exists: ${networkName}`);
+    logger.debug('NetworkManager', `Network already exists: ${networkName}`);
     return networkName;
   }
 
   // Check if another request is already creating this network
   const pendingCreation = pendingNetworkCreations.get(networkName);
   if (pendingCreation) {
-    console.log(`[NetworkManager] Waiting for pending network creation: ${networkName}`);
+    logger.debug('NetworkManager', `Waiting for pending network creation: ${networkName}`);
     return await pendingCreation;
   }
 
@@ -197,7 +198,7 @@ export async function listSessionNetworks(): Promise<string[]> {
   try {
     return await dockerListNetworks(config.network.sessionNetworkPrefix);
   } catch (error) {
-    console.error('[NetworkManager] Failed to list session networks:', error);
+    logger.error('NetworkManager', `Failed to list session networks: ${error}`);
     return [];
   }
 }
@@ -230,7 +231,7 @@ async function createSessionNetworkWithRetry(sessionId: string, maxRetries: numb
       if (error.message.includes('already exists')) {
         const exists = await networkExists(networkName);
         if (exists) {
-          console.log(`[NetworkManager] Network created by concurrent request: ${networkName}`);
+          logger.debug('NetworkManager', `Network created by concurrent request: ${networkName}`);
           return networkName;
         }
       }
@@ -242,7 +243,7 @@ async function createSessionNetworkWithRetry(sessionId: string, maxRetries: numb
 
       // Exponential backoff: 100ms, 200ms, 400ms...
       const backoffMs = 100 * Math.pow(2, attempt - 1);
-      console.log(`[NetworkManager] Retry ${attempt}/${maxRetries} for ${networkName} after ${backoffMs}ms`);
+      logger.info('NetworkManager', `Retry ${attempt}/${maxRetries} for ${networkName} after ${backoffMs}ms`);
       await new Promise(resolve => setTimeout(resolve, backoffMs));
     }
   }
@@ -260,7 +261,7 @@ export async function createSessionNetwork(sessionId: string): Promise<string> {
   // Double-check if network already exists (could have been created concurrently)
   const exists = await dockerNetworkExists(networkName);
   if (exists) {
-    console.log(`[NetworkManager] Network already exists (race): ${networkName}`);
+    logger.debug('NetworkManager', `Network already exists (race): ${networkName}`);
     return networkName;
   }
 
@@ -271,7 +272,7 @@ export async function createSessionNetwork(sessionId: string): Promise<string> {
   }
 
   try {
-    console.log(`[NetworkManager] Creating network: ${networkName} with subnet ${subnet}`);
+    logger.info('NetworkManager', `Creating network: ${networkName} with subnet ${subnet}`);
     await dockerCreateNetwork({
       name: networkName,
       driver: config.network.networkDriver,
@@ -282,15 +283,15 @@ export async function createSessionNetwork(sessionId: string): Promise<string> {
       },
     });
     networkMetrics.networksCreated++;
-    console.log(`[NetworkManager] Network created: ${networkName}`);
+    logger.info('NetworkManager', `Network created: ${networkName}`);
     return networkName;
   } catch (error: any) {
-    console.error(`[NetworkManager] Failed to create network ${networkName}:`, error.message);
+    logger.error('NetworkManager', `Failed to create network ${networkName}: ${error.message}`);
     networkMetrics.cleanupErrors++;
 
     // Handle "network already exists" race condition
     if (error.message?.includes('already exists') || error.statusCode === 409) {
-      console.log(`[NetworkManager] Network ${networkName} already exists (concurrent creation)`);
+      logger.debug('NetworkManager', `Network ${networkName} already exists (concurrent creation)`);
       subnetAllocator.releaseSubnet(subnet);
       const existsNow = await dockerNetworkExists(networkName);
       if (existsNow) return networkName;
@@ -301,11 +302,11 @@ export async function createSessionNetwork(sessionId: string): Promise<string> {
 
     // If creation fails due to subnet conflict, try emergency cleanup
     if (error.message?.includes('address pool') || error.message?.includes('subnet') || error.message?.includes('overlap')) {
-      console.log(`[NetworkManager] Subnet conflict detected, attempting emergency cleanup...`);
+      logger.warn('NetworkManager', 'Subnet conflict detected, attempting emergency cleanup...');
       try {
         await emergencyNetworkCleanup();
       } catch (cleanupError) {
-        console.error(`[NetworkManager] Emergency cleanup failed:`, cleanupError);
+        logger.error('NetworkManager', `Emergency cleanup failed: ${cleanupError}`);
       }
       throw new Error(`Failed to create network due to subnet conflict: ${error.message}`);
     }
@@ -330,17 +331,17 @@ export async function deleteSessionNetwork(sessionId: string): Promise<void> {
       // Network may already be gone
     }
 
-    console.log(`[NetworkManager] Deleting network: ${networkName} (subnet: ${subnet})`);
+    logger.info('NetworkManager', `Deleting network: ${networkName} (subnet: ${subnet})`);
     await dockerRemoveNetwork(networkName);
     networkMetrics.networksDeleted++;
-    console.log(`[NetworkManager] Network deleted: ${networkName}`);
+    logger.info('NetworkManager', `Network deleted: ${networkName}`);
 
     if (subnet) {
       subnetAllocator.releaseSubnet(subnet);
-      console.log(`[NetworkManager] Subnet ${subnet} released back to pool`);
+      logger.debug('NetworkManager', `Subnet ${subnet} released back to pool`);
     }
   } catch (error: any) {
-    console.error(`[NetworkManager] Failed to delete network ${networkName}:`, error.message);
+    logger.error('NetworkManager', `Failed to delete network ${networkName}: ${error.message}`);
     networkMetrics.cleanupErrors++;
   }
 }
@@ -363,15 +364,15 @@ export async function cleanupOrphanedNetworks(maxAgeMs: number = 300000): Promis
     if (orphanedCount > 50) {
       escalationLevel = 2;
       effectiveMaxAge = 0; // Clean all orphaned networks immediately
-      console.warn(`[NetworkManager] ⚠️  CRITICAL: ${orphanedCount} orphaned networks detected! Emergency cleanup engaged.`);
+      logger.warn('NetworkManager', `CRITICAL: ${orphanedCount} orphaned networks detected! Emergency cleanup engaged.`);
     } else if (orphanedCount > 20) {
       escalationLevel = 1;
       effectiveMaxAge = Math.min(maxAgeMs, 30000); // Max 30 seconds age
-      console.warn(`[NetworkManager] ⚠️  WARNING: ${orphanedCount} orphaned networks detected. Aggressive cleanup enabled.`);
+      logger.warn('NetworkManager', `WARNING: ${orphanedCount} orphaned networks detected. Aggressive cleanup enabled.`);
     }
 
     networkMetrics.escalationLevel = escalationLevel;
-    console.log(`[NetworkManager] Checking ${networks.length} networks for cleanup (max age: ${effectiveMaxAge / 1000}s, escalation: ${escalationLevel})`);
+    logger.info('NetworkManager', `Checking ${networks.length} networks for cleanup (max age: ${effectiveMaxAge / 1000}s, escalation: ${escalationLevel})`);
 
     // Batch process networks for faster cleanup (via SDK — no shell overhead)
     const batchSize = escalationLevel === 2 ? 20 : 10;
@@ -387,13 +388,13 @@ export async function cleanupOrphanedNetworks(maxAgeMs: number = 300000): Promis
 
           // Check if network should be cleaned up
           if (ageMs > effectiveMaxAge && containerCount === 0) {
-            console.log(`[NetworkManager] Cleaning up orphaned network: ${networkName} (age: ${Math.floor(ageMs / 1000)}s)`);
+            logger.info('NetworkManager', `Cleaning up orphaned network: ${networkName} (age: ${Math.floor(ageMs / 1000)}s)`);
             const sessionId = networkName.replace(config.network.sessionNetworkPrefix, '');
             await deleteSessionNetwork(sessionId);
             cleanedCount++;
           }
         } catch (error) {
-          console.error(`[NetworkManager] Failed to check/cleanup network ${networkName}:`, error);
+          logger.error('NetworkManager', `Failed to check/cleanup network ${networkName}: ${error}`);
           networkMetrics.cleanupErrors++;
         }
       })();
@@ -414,10 +415,10 @@ export async function cleanupOrphanedNetworks(maxAgeMs: number = 300000): Promis
 
     const duration = Date.now() - startTime;
     if (cleanedCount > 0) {
-      console.log(`[NetworkManager] Cleanup complete: removed ${cleanedCount} orphaned networks in ${duration}ms (escalation level: ${escalationLevel})`);
+      logger.info('NetworkManager', `Cleanup complete: removed ${cleanedCount} orphaned networks in ${duration}ms (escalation level: ${escalationLevel})`);
     }
   } catch (error) {
-    console.error('[NetworkManager] Failed to cleanup orphaned networks:', error);
+    logger.error('NetworkManager', `Failed to cleanup orphaned networks: ${error}`);
   }
 }
 
@@ -431,14 +432,14 @@ export async function emergencyNetworkCleanup(): Promise<void> {
 
   // Check if emergency cleanup is already running
   if (emergencyCleanupRunning) {
-    console.log('[NetworkManager] ⚠️ EMERGENCY: Cleanup already in progress, skipping...');
+    logger.warn('NetworkManager', 'EMERGENCY: Cleanup already in progress, skipping...');
     return;
   }
 
   // Check cooldown to avoid spamming cleanup
   if (now - lastEmergencyCleanup < EMERGENCY_CLEANUP_COOLDOWN) {
     const remainingMs = EMERGENCY_CLEANUP_COOLDOWN - (now - lastEmergencyCleanup);
-    console.log(`[NetworkManager] ⚠️ EMERGENCY: Cleanup on cooldown, ${remainingMs}ms remaining`);
+    logger.warn('NetworkManager', `EMERGENCY: Cleanup on cooldown, ${remainingMs}ms remaining`);
     return;
   }
 
@@ -446,15 +447,15 @@ export async function emergencyNetworkCleanup(): Promise<void> {
   lastEmergencyCleanup = now;
 
   try {
-    console.log('[NetworkManager] ⚠️ EMERGENCY: Pruning all unused CodeRunner networks');
+    logger.warn('NetworkManager', 'EMERGENCY: Pruning all unused CodeRunner networks');
 
     // Use SDK prune — no process spawn
     try {
       const deleted = await pruneNetworks(config.network.networkLabel);
-      console.log(`[NetworkManager] Emergency prune removed ${deleted.length} networks`);
+      logger.info('NetworkManager', `Emergency prune removed ${deleted.length} networks`);
     } catch (pruneError: any) {
       if (pruneError.message?.includes('already running')) {
-        console.log('[NetworkManager] ⚠️ EMERGENCY: Prune already running in another process');
+        logger.warn('NetworkManager', 'EMERGENCY: Prune already running in another process');
       } else {
         throw pruneError;
       }
@@ -483,9 +484,9 @@ export async function emergencyNetworkCleanup(): Promise<void> {
       await Promise.all(cleanupPromises);
     }
 
-    console.log(`[NetworkManager] Emergency cleanup: manually removed ${manualCleanupCount} additional networks`);
+    logger.info('NetworkManager', `Emergency cleanup: manually removed ${manualCleanupCount} additional networks`);
   } catch (error) {
-    console.error('[NetworkManager] Emergency cleanup failed:', error);
+    logger.error('NetworkManager', `Emergency cleanup failed: ${error}`);
   } finally {
     emergencyCleanupRunning = false;
   }
@@ -539,7 +540,7 @@ export async function getNetworkStats(): Promise<{
 
     return { total: networks.length, withContainers, empty, networks: networkDetails };
   } catch (error) {
-    console.error('[NetworkManager] Failed to get network stats:', error);
+    logger.error('NetworkManager', `Failed to get network stats: ${error}`);
     return { total: 0, withContainers: 0, empty: 0, networks: [] };
   }
 }
@@ -558,20 +559,20 @@ export function getNetworkMetrics(): NetworkCleanupMetrics {
  */
 export async function aggressiveBulkNetworkCleanup(): Promise<number> {
   try {
-    console.log('[NetworkManager] 🔥 Starting aggressive bulk network cleanup...');
+    logger.warn('NetworkManager', 'Starting aggressive bulk network cleanup...');
     const startTime = Date.now();
     let removedCount = 0;
 
     // Step 1: Get all CodeRunner session networks
     const networks = await listSessionNetworks();
     if (networks.length === 0) {
-      console.log('[NetworkManager] No networks found for bulk cleanup');
+      logger.info('NetworkManager', 'No networks found for bulk cleanup');
       return 0;
     }
-    console.log(`[NetworkManager] Found ${networks.length} networks for bulk removal`);
+    logger.info('NetworkManager', `Found ${networks.length} networks for bulk removal`);
 
     // Step 2: Force-disconnect all containers from these networks
-    console.log('[NetworkManager] Disconnecting containers from networks...');
+    logger.info('NetworkManager', 'Disconnecting containers from networks...');
     await Promise.allSettled(
       networks.map((name) => disconnectAllFromNetwork(name)),
     );
@@ -580,7 +581,7 @@ export async function aggressiveBulkNetworkCleanup(): Promise<number> {
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
     // Step 4: Bulk remove networks in parallel batches via SDK
-    console.log('[NetworkManager] Bulk removing networks in parallel...');
+    logger.info('NetworkManager', 'Bulk removing networks in parallel...');
     const batchSize = 20;
 
     for (let i = 0; i < networks.length; i += batchSize) {
@@ -596,10 +597,10 @@ export async function aggressiveBulkNetworkCleanup(): Promise<number> {
     }
 
     const duration = Date.now() - startTime;
-    console.log(`[NetworkManager] ✅ Aggressive cleanup complete: removed ${removedCount}/${networks.length} networks in ${duration}ms`);
+    logger.info('NetworkManager', `Aggressive cleanup complete: removed ${removedCount}/${networks.length} networks in ${duration}ms`);
     return removedCount;
   } catch (error) {
-    console.error('[NetworkManager] Aggressive bulk cleanup failed:', error);
+    logger.error('NetworkManager', `Aggressive bulk cleanup failed: ${error}`);
     return 0;
   }
 }

@@ -1,8 +1,8 @@
 import { Moon, Sun, AlertTriangle } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useTheme } from "./theme-provider"
-import fabricLogo from "../assets/fabric.png"
-import codeRunnerLogo from "../assets/CodeRunner.png"
+import fabricLogo from "../assets/fabric.webp"
+import codeRunnerLogo from "../assets/CodeRunner.webp"
 import {
   Tooltip,
   TooltipContent,

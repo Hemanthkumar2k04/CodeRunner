@@ -10,6 +10,7 @@
  */
 
 import Docker from 'dockerode';
+import { logger } from './logger';
 import { Readable, PassThrough } from 'stream';
 import * as tar from 'tar-stream';
 import { execSync } from 'child_process';
@@ -225,7 +226,7 @@ export async function removeContainers(containerIds: string[]): Promise<void> {
       } catch (err: any) {
         // Container may already be gone — ignore 404
         if (err.statusCode !== 404) {
-          console.warn(`[DockerClient] Failed to remove container ${id.substring(0, 12)}: ${err.message}`);
+          logger.warn('DockerClient', `Failed to remove container ${id.substring(0, 12)}: ${err.message}`);
         }
       }
     }),
@@ -492,7 +493,7 @@ function parseMemoryString(mem: string): number {
     case 'g': return value * 1024 * 1024 * 1024;
     case 'm': return value * 1024 * 1024;
     case 'k': return value * 1024;
-    default:  return value;
+    default: return value;
   }
 }
 

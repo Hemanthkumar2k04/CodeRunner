@@ -10,6 +10,7 @@ import { getNetworkStats, getNetworkMetrics, getSubnetStats, resetNetworkMetrics
 import { pipelineMetrics } from './pipelineMetrics';
 
 import { config } from './config';
+import { logger } from './logger';
 
 const router = Router();
 
@@ -22,7 +23,7 @@ if (!ADMIN_KEY && config.server.env === 'production') {
 }
 
 if (ADMIN_KEY === 'dev-admin-key-change-in-production') {
-  console.warn('[Admin] WARNING: Using default admin key. Set ADMIN_KEY environment variable for production.');
+  logger.warn('Admin', 'Using default admin key. Set ADMIN_KEY environment variable for production.');
 }
 
 /**
@@ -72,7 +73,7 @@ router.get('/stats', adminAuth, async (req: Request, res: Response) => {
       }
     } catch (err) {
       // If we can't import, use default values
-      console.warn('[Admin] Could not import executionQueue:', err);
+      logger.warn('Admin', `Could not import executionQueue: ${err}`);
     }
 
     const stats = {
@@ -203,7 +204,7 @@ router.post('/reset', adminAuth, async (req: Request, res: Response) => {
       message: 'All metrics have been reset successfully'
     });
   } catch (error: any) {
-    console.error('[Admin] Error resetting metrics:', error);
+    logger.error('Admin', `Error resetting metrics: ${error}`);
     res.status(500).json({
       error: `Failed to reset metrics: ${error.message}`
     });
@@ -328,6 +329,33 @@ router.delete('/load-test-reports/:id', adminAuth, (req: Request, res: Response)
  */
 router.get('/pipeline-metrics', adminAuth, (req: Request, res: Response) => {
   res.json(pipelineMetrics.getStats());
+});
+
+/**
+ * GET /admin/logs - Centralized server logs
+ * Query params: limit, level, category, search, sinceId
+ */
+router.get('/logs', adminAuth, (req: Request, res: Response) => {
+  const limit = parseInt(req.query.limit as string) || 100;
+  const level = req.query.level as string | undefined;
+  const category = req.query.category as string | undefined;
+  const search = req.query.search as string | undefined;
+  const sinceId = req.query.sinceId ? parseInt(req.query.sinceId as string) : undefined;
+
+  const entries = logger.getEntries({
+    limit,
+    level: level as any,
+    category,
+    search,
+    sinceId,
+  });
+
+  res.json({
+    entries,
+    categories: logger.getCategories(),
+    summary: logger.getSummary(),
+    total: logger.size,
+  });
 });
 
 export default router;

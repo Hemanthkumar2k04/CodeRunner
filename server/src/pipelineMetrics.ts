@@ -10,6 +10,8 @@
  * and flags slow executions for investigation.
  */
 
+import { logger } from './logger';
+
 export interface PipelineTimings {
   /** Time spent in the execution queue before processing began */
   queueMs: number;
@@ -59,8 +61,9 @@ class PipelineMetricsService {
       if (this.slowExecutions.length > this.maxSlowExecutions) {
         this.slowExecutions.shift();
       }
-      console.warn(
-        `[PipelineMetrics] Slow execution detected (${timing.totalMs}ms): ` +
+      logger.warn(
+        'PipelineMetrics',
+        `Slow execution detected (${timing.totalMs}ms): ` +
         `queue=${timing.queueMs}ms network=${timing.networkMs}ms ` +
         `container=${timing.containerMs}ms files=${timing.fileTransferMs}ms ` +
         `exec=${timing.executionMs}ms cleanup=${timing.cleanupMs}ms ` +
@@ -134,7 +137,7 @@ class PipelineMetricsService {
   reset(): void {
     this.timings = [];
     this.slowExecutions = [];
-    console.log('[PipelineMetrics] Metrics reset');
+    logger.info('PipelineMetrics', 'Metrics reset');
   }
 }
 

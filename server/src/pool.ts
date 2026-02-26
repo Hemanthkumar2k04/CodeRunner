@@ -1,4 +1,5 @@
 import { config } from './config';
+import { logger } from './logger';
 import { adminMetrics } from './adminMetrics';
 import {
   createContainer as dockerCreateContainer,
@@ -59,7 +60,7 @@ class SessionContainerPool {
   };
 
   constructor() {
-    console.log('[Pool] Initialized session-based container pool with TTL');
+    logger.info('Pool', 'Initialized session-based container pool with TTL');
   }
 
   /**
@@ -78,7 +79,7 @@ class SessionContainerPool {
       queueDepth: 0,
     };
 
-    console.log('[Pool] Metrics have been reset');
+    logger.info('Pool', 'Metrics have been reset');
   }
 
   /**
@@ -98,7 +99,7 @@ class SessionContainerPool {
       );
 
       if (expiredContainers.length > 0) {
-        console.log(`[Pool] Cleaning up ${expiredContainers.length} expired containers for session ${sessionId}`);
+        logger.info('Pool', `Cleaning up ${expiredContainers.length} expired containers for session ${sessionId}`);
 
         // Batch delete containers via SDK (parallel, no process spawning)
         const containerIds = expiredContainers.map(c => c.containerId);
@@ -106,9 +107,9 @@ class SessionContainerPool {
           await removeContainers(containerIds);
           cleanedCount += containerIds.length;
           this.metrics.containersDeleted += containerIds.length;
-          console.log(`[Pool] Deleted ${containerIds.length} expired containers`);
+          logger.info('Pool', `Deleted ${containerIds.length} expired containers`);
         } catch (error: any) {
-          console.warn(`[Pool] Batch deletion error: ${error.message}`);
+          logger.warn('Pool', `Batch deletion error: ${error.message}`);
           this.metrics.cleanupErrors++;
         }
 
@@ -142,20 +143,20 @@ class SessionContainerPool {
         .map((c) => c.id);
 
       if (orphanedIds.length > 0) {
-        console.log(`[Pool] Found ${orphanedIds.length} orphaned containers. Removing...`);
+        logger.info('Pool', `Found ${orphanedIds.length} orphaned containers. Removing...`);
         await removeContainers(orphanedIds);
         this.metrics.containersDeleted += orphanedIds.length;
         cleanedCount += orphanedIds.length;
       }
     } catch (error) {
-      console.error('[Pool] Safety net cleanup failed:', error);
+      logger.error('Pool', `Safety net cleanup failed: ${error}`);
     }
 
     const cleanupDuration = Date.now() - startTime;
     this.metrics.lastCleanupDuration = cleanupDuration;
 
     if (cleanedCount > 0) {
-      console.log(`[Pool] TTL cleanup completed: deleted ${cleanedCount} expired/orphaned containers`);
+      logger.info('Pool', `TTL cleanup completed: deleted ${cleanedCount} expired/orphaned containers`);
     }
   }
 
@@ -204,7 +205,7 @@ class SessionContainerPool {
       existingContainer.inUse = true;
       existingContainer.lastUsed = Date.now();
       this.metrics.containersReused++;
-      console.log(`[Pool] Reusing container for ${sessionId}:${language} - ${existingContainer.containerId.substring(0, 12)}`);
+      logger.debug('Pool', `Reusing container for ${sessionId}:${language} - ${existingContainer.containerId.substring(0, 12)}`);
       return existingContainer.containerId;
     }
 
@@ -214,7 +215,7 @@ class SessionContainerPool {
     if (pendingPromise) {
       // Another request is already creating a container for this session+language.
       // Wait for it, then check again for an available container.
-      console.log(`[Pool] Waiting for pending container acquisition: ${mutexKey}`);
+      logger.debug('Pool', `Waiting for pending container acquisition: ${mutexKey}`);
       await pendingPromise;
       // Re-check after the pending creation completes
       const updatedContainers = this.pool.get(sessionId) || [];
@@ -225,13 +226,13 @@ class SessionContainerPool {
         nowAvailable.inUse = true;
         nowAvailable.lastUsed = Date.now();
         this.metrics.containersReused++;
-        console.log(`[Pool] Reusing container after mutex wait for ${sessionId}:${language} - ${nowAvailable.containerId.substring(0, 12)}`);
+        logger.debug('Pool', `Reusing container after mutex wait for ${sessionId}:${language} - ${nowAvailable.containerId.substring(0, 12)}`);
         return nowAvailable.containerId;
       }
     }
 
     // Create new container with mutex
-    console.log(`[Pool] Creating new container for ${sessionId}:${language}`);
+    logger.info('Pool', `Creating new container for ${sessionId}:${language}`);
     const creationPromise = this.createContainer(language, sessionId, networkName);
     this.pendingAcquisitions.set(mutexKey, creationPromise);
 
@@ -254,7 +255,7 @@ class SessionContainerPool {
       currentContainers.push(newContainer);
       this.pool.set(sessionId, currentContainers);
 
-      console.log(`[Pool] Created container ${containerId.substring(0, 12)} for ${sessionId}:${language}`);
+      logger.info('Pool', `Created container ${containerId.substring(0, 12)} for ${sessionId}:${language}`);
       return containerId;
     } finally {
       this.pendingAcquisitions.delete(mutexKey);
@@ -268,7 +269,7 @@ class SessionContainerPool {
   async returnContainer(containerId: string, sessionId: string): Promise<void> {
     const sessionContainers = this.pool.get(sessionId);
     if (!sessionContainers) {
-      console.warn(`[Pool] No containers found for session ${sessionId}`);
+      logger.warn('Pool', `No containers found for session ${sessionId}`);
       return;
     }
 
@@ -279,7 +280,7 @@ class SessionContainerPool {
 
       container.inUse = false;
       container.lastUsed = Date.now();
-      console.log(`[Pool] Returned container ${containerId.substring(0, 12)} to pool (cleaned and TTL refreshed)`);
+      logger.debug('Pool', `Returned container ${containerId.substring(0, 12)} to pool`);
     }
   }
 
@@ -290,7 +291,7 @@ class SessionContainerPool {
   private async cleanContainer(containerId: string, language?: string): Promise<void> {
     // Skip cleanup for stateless languages (files are overwritten via putArchive anyway)
     if (config.sessionContainers.skipStatelessCleanup && language && this.isStatelessLanguage(language)) {
-      console.log(`[Pool] Skipping cleanup for stateless ${language} container ${containerId.substring(0, 12)}`);
+      logger.debug('Pool', `Skipping cleanup for stateless ${language} container ${containerId.substring(0, 12)}`);
       return;
     }
 
@@ -298,9 +299,9 @@ class SessionContainerPool {
       await execInContainer(containerId, 'rm -rf /app/* /app/.* /tmp/* 2>/dev/null || true', {
         timeout: config.docker.commandTimeout,
       });
-      console.log(`[Pool] Cleaned container ${containerId.substring(0, 12)}`);
+      logger.debug('Pool', `Cleaned container ${containerId.substring(0, 12)}`);
     } catch (error: any) {
-      console.error(`[Pool] Failed to clean container ${containerId.substring(0, 12)}:`, error.message);
+      logger.error('Pool', `Failed to clean container ${containerId.substring(0, 12)}: ${error.message}`);
     }
   }
 
@@ -340,23 +341,23 @@ class SessionContainerPool {
         cmd: language === 'sql' ? undefined : ['tail', '-f', '/dev/null'],
       });
 
-      console.log(`[Pool] Container created: ${containerId.substring(0, 12)} (${language})`);
+      logger.info('Pool', `Container created: ${containerId.substring(0, 12)} (${language})`);
 
       // For MySQL, wait for initialization with readiness polling
       if (language === 'sql') {
-        console.log(`[Pool] Waiting for MySQL to initialize...`);
+        logger.info('Pool', 'Waiting for MySQL to initialize...');
         await waitForHealthy(
           containerId,
           'mysqladmin ping -u root -proot --silent',
           30_000,
           500,
         );
-        console.log(`[Pool] MySQL ready in ${containerId.substring(0, 12)}`);
+        logger.info('Pool', `MySQL ready in ${containerId.substring(0, 12)}`);
       }
 
       return containerId;
     } catch (error: any) {
-      console.error(`[Pool] Failed to create container:`, error.message);
+      logger.error('Pool', `Failed to create container: ${error.message}`);
       throw error;
     }
   }
@@ -370,35 +371,35 @@ class SessionContainerPool {
       return;
     }
 
-    console.log(`[Pool] Cleaning up ${sessionContainers.length} containers for session ${sessionId}`);
+    logger.info('Pool', `Cleaning up ${sessionContainers.length} containers for session ${sessionId}`);
 
     const containerIds = sessionContainers.map(c => c.containerId);
 
     if (containerIds.length > 0) {
       await removeContainers(containerIds);
       this.metrics.containersDeleted += containerIds.length;
-      console.log(`[Pool] Deleted ${containerIds.length} containers for session ${sessionId}`);
+      logger.info('Pool', `Deleted ${containerIds.length} containers for session ${sessionId}`);
     }
 
     this.pool.delete(sessionId);
-    console.log(`[Pool] Session ${sessionId} cleanup completed`);
+    logger.info('Pool', `Session ${sessionId} cleanup completed`);
   }
 
   /**
    * Cleanup all containers (on server shutdown)
    */
   async cleanupAll(): Promise<void> {
-    console.log('[Pool] Cleaning up all session containers...');
+    logger.info('Pool', 'Cleaning up all session containers...');
 
     try {
       const allContainers = await listContainers({ 'type': 'coderunner-session' });
       if (allContainers.length > 0) {
-        console.log(`[Pool] Found ${allContainers.length} containers to clean up`);
+        logger.info('Pool', `Found ${allContainers.length} containers to clean up`);
         await removeContainers(allContainers.map((c) => c.id));
-        console.log('[Pool] All session containers cleaned up');
+        logger.info('Pool', 'All session containers cleaned up');
       }
     } catch (error: any) {
-      console.error('[Pool] Failed to cleanup all containers:', error.message);
+      logger.error('Pool', `Failed to cleanup all containers: ${error.message}`);
     }
 
     this.pool.clear();

@@ -1,9 +1,8 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { lazy, Suspense, useState, useCallback, useEffect, useRef } from 'react';
 import './App.css';
 import { ThemeProvider } from './components/theme-provider';
 import { Toaster } from './components/ui/toaster';
-import { AdminPage } from './components/AdminPage';
 import { ResponsiveNavbar } from './components/ResponsiveNavbar';
 import { Folder } from 'lucide-react';
 import { MobileWorkspace } from './components/MobileWorkspace';
@@ -16,6 +15,21 @@ import { useEditorStore } from './stores/useEditorStore';
 import type { EditorState } from './stores/useEditorStore';
 import { getLanguageFromExtension, flattenTree, isLanguageSupported, isDataFile } from './lib/file-utils';
 import { cn } from './lib/utils';
+
+// Lazy-loaded routes — AdminPage pulls in Recharts (~280KB), defer entirely
+const AdminPage = lazy(() => import('./components/AdminPage').then(m => ({ default: m.AdminPage })));
+
+// Loading spinner for Suspense fallbacks
+function LoadingSpinner() {
+  return (
+    <div className="h-screen w-full flex items-center justify-center bg-background">
+      <div className="flex flex-col items-center gap-4">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        <span className="text-sm text-muted-foreground">Loading...</span>
+      </div>
+    </div>
+  );
+}
 
 function EditorPage() {
   const { runCode, stopCode, disconnect } = useSocket();
@@ -263,7 +277,11 @@ function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/editor" replace />} />
           <Route path="/editor" element={<EditorPage />} />
-          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/admin" element={
+            <Suspense fallback={<LoadingSpinner />}>
+              <AdminPage />
+            </Suspense>
+          } />
           <Route path="*" element={<Navigate to="/editor" replace />} />
         </Routes>
       </ThemeProvider>
