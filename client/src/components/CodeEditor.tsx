@@ -10,7 +10,7 @@ import { getMonacoLanguage, getLanguageFromExtension, formatBytes, getFileSize }
 import { isNotebookFile } from '@/lib/notebook-utils';
 import { NotebookEditor } from './NotebookEditor';
 import { FilePreview } from './FilePreview';
-import { disableMonacoClipboard } from '@/lib/clipboard-blocker';
+
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -49,13 +49,13 @@ export function CodeEditor({ onRunClick, onStopClick }: CodeEditorProps) {
   const language = activeFile ? getMonacoLanguage(activeFile.name) : 'plaintext';
   const execLanguage = activeFile ? getLanguageFromExtension(activeFile.name) : null;
   const isNotebook = activeFile ? isNotebookFile(activeFile.name) : false;
-  
+
   // Detect if file should use preview (images, CSV, binary)
   const shouldUsePreview = activeFile && (
-    activeFile.isBinary || 
+    activeFile.isBinary ||
     /\.(png|jpg|jpeg|gif|bmp|svg|webp|ico|csv|tsv|pdf)$/i.test(activeFile.name)
   );
-  
+
   // Debug logging
   if (activeFile && shouldUsePreview) {
     console.log('[CodeEditor] Using preview for:', {
@@ -96,10 +96,8 @@ export function CodeEditor({ onRunClick, onStopClick }: CodeEditorProps) {
   const handleEditorDidMount = useCallback((editor: editor.IStandaloneCodeEditor) => {
     // Store editor reference
     editorRef.current = editor;
-    
-    // Apply clipboard blocking to Monaco editor
-    disableMonacoClipboard(editor);
-    
+
+
     // Add Ctrl+Enter keyboard shortcut to run code
     editor.addCommand(
       KeyMod.CtrlCmd | KeyCode.Enter,
@@ -119,38 +117,38 @@ export function CodeEditor({ onRunClick, onStopClick }: CodeEditorProps) {
   }, []);
 
   const handleTabClick = useCallback((tabId: string) => {
-      setActiveFile(tabId);
-    }, [setActiveFile]);
+    setActiveFile(tabId);
+  }, [setActiveFile]);
 
   const handleTabClose = useCallback((tabId: string, e: React.MouseEvent) => {
-      e.stopPropagation();
-      closeTab(tabId);
-    },
+    e.stopPropagation();
+    closeTab(tabId);
+  },
     [closeTab]
   );
 
   const handleEditorChange = useCallback((value: string | undefined) => {
-      if (activeFileId && value !== undefined) {
-        const result = updateContent(activeFileId, value);
-        if (!result.success) {
-          console.warn(result.error);
-        }
+    if (activeFileId && value !== undefined) {
+      const result = updateContent(activeFileId, value);
+      if (!result.success) {
+        console.warn(result.error);
       }
-    }, [activeFileId, updateContent]);
+    }
+  }, [activeFileId, updateContent]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-      // Only allow Ctrl+S for save and Ctrl+Enter for run
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault();
-        handleSave();
+    // Only allow Ctrl+S for save and Ctrl+Enter for run
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      e.preventDefault();
+      handleSave();
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      if (activeFile && execLanguage && !isRunning) {
+        handleRunClick();
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        if (activeFile && execLanguage && !isRunning) {
-          handleRunClick();
-        }
-      }
-    }, [handleSave, activeFile, execLanguage, isRunning, handleRunClick]);
+    }
+  }, [handleSave, activeFile, execLanguage, isRunning, handleRunClick]);
 
   // Empty state when no file is open
   if (openTabs.length === 0) {
@@ -201,7 +199,7 @@ export function CodeEditor({ onRunClick, onStopClick }: CodeEditorProps) {
                     {isActive && (
                       <div className="absolute inset-x-0 top-0 h-0.5 bg-primary" />
                     )}
-                    
+
                     <FileIcon filename={file.name} size={16} className="shrink-0" />
                     <span className={cn(
                       "truncate text-sm max-w-[140px]",
@@ -271,10 +269,10 @@ export function CodeEditor({ onRunClick, onStopClick }: CodeEditorProps) {
                 {!activeFile
                   ? 'Open a file to run'
                   : !execLanguage && !isNotebook
-                  ? 'Unsupported language'
-                  : isRunning
-                  ? 'Stop execution'
-                  : 'Run code (Ctrl+Enter)'}
+                    ? 'Unsupported language'
+                    : isRunning
+                      ? 'Stop execution'
+                      : 'Run code (Ctrl+Enter)'}
               </TooltipContent>
             </Tooltip>
           </div>

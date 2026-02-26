@@ -12,7 +12,7 @@ import { Console } from './components/Console';
 import { HomePage } from './components/HomePage';
 import { LabPage } from './components/LabPage';
 import { useSocket } from './hooks/useSocket';
-import { useCopyPasteRestriction } from './hooks/useCopyPasteRestriction';
+
 import { useEditorStore } from './stores/useEditorStore';
 import type { EditorState } from './stores/useEditorStore';
 import { getLanguageFromExtension, flattenTree, isLanguageSupported, isDataFile } from './lib/file-utils';
@@ -39,8 +39,7 @@ function EditorPage() {
   const rootIds = useEditorStore((state: EditorState) => state.rootIds);
   const activeFileId = useEditorStore((state: EditorState) => state.activeFileId);
 
-  // Apply global copy-paste restriction
-  useCopyPasteRestriction();
+
 
   // Responsive state
   const [isMobile, setIsMobile] = useState(false);
