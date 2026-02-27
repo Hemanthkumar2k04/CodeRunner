@@ -1,7 +1,6 @@
 import { Moon, Sun, AlertTriangle } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useTheme } from "./theme-provider"
-import fabricLogo from "../assets/fabric.webp"
 import codeRunnerLogo from "../assets/CodeRunner.webp"
 import {
   Tooltip,
@@ -39,21 +38,6 @@ export function Navbar() {
       {/* Navbar - Redesigned */}
       <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex h-16 items-center px-6 gap-6">
-          {/* Logo Section */}
-          <a
-            href="https://fabric-eec.vercel.app"
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-accent/50 transition-all duration-200 group"
-          >
-            <img
-              src={fabricLogo}
-              alt="Fabric Logo"
-              className="h-9 w-auto group-hover:scale-105 transition-transform"
-            />
-            <div className="h-8 w-px bg-border" />
-          </a>
-
           {/* Brand Section */}
           <div className="flex items-center gap-3">
             <img
