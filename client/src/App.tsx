@@ -9,6 +9,8 @@ import { MobileWorkspace } from './components/MobileWorkspace';
 import { Workspace } from './components/Workspace';
 import { CodeEditor } from './components/CodeEditor';
 import { Console } from './components/Console';
+import { HomePage } from './components/HomePage';
+import { LabPage } from './components/LabPage';
 import { useSocket } from './hooks/useSocket';
 import { useCopyPasteRestriction } from './hooks/useCopyPasteRestriction';
 import { useEditorStore } from './stores/useEditorStore';
@@ -275,14 +277,15 @@ function App() {
       <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
         <Toaster />
         <Routes>
-          <Route path="/" element={<Navigate to="/editor" replace />} />
+          <Route path="/" element={<HomePage />} />
           <Route path="/editor" element={<EditorPage />} />
+          <Route path="/lab" element={<LabPage />} />
           <Route path="/admin" element={
             <Suspense fallback={<LoadingSpinner />}>
               <AdminPage />
             </Suspense>
           } />
-          <Route path="*" element={<Navigate to="/editor" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </ThemeProvider>
     </Router>

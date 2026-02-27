@@ -1,7 +1,6 @@
 import { Moon, Sun, AlertTriangle, Menu, X } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useTheme } from "./theme-provider"
-import fabricLogo from "../assets/fabric.webp"
 import codeRunnerLogo from "../assets/CodeRunner.webp"
 import { Button } from "@/components/ui/button"
 import {
@@ -55,21 +54,6 @@ export function ResponsiveNavbar({ onMenuClick, isMenuOpen }: ResponsiveNavbarPr
           >
             {isMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </Button>
-
-          {/* Logo Section - Hidden on mobile, shown on tablet+ */}
-          <a
-            href="https://fabric-eec.vercel.app"
-            target="_blank"
-            rel="noreferrer"
-            className="hidden md:flex items-center gap-3 px-2 sm:px-4 py-2 rounded-lg hover:bg-accent/50 transition-all duration-200 group"
-          >
-            <img
-              src={fabricLogo}
-              alt="Fabric Logo"
-              className="h-7 sm:h-9 w-auto group-hover:scale-105 transition-transform"
-            />
-            <div className="hidden lg:block h-8 w-px bg-border" />
-          </a>
 
           {/* Brand Section */}
           <div className="flex items-center gap-2 sm:gap-3">
