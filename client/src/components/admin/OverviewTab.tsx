@@ -156,7 +156,7 @@ export function OverviewTab({ stats, resourceHistory }: OverviewTabProps) {
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} className="stroke-muted/20" />
                 <XAxis type="number" tick={{ fontSize: 11 }} />
                 <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={44} />
-                <Tooltip {...TOOLTIP_STYLE} formatter={(v: number) => [`${v}ms`, 'Latency']} />
+                <Tooltip {...TOOLTIP_STYLE} formatter={(v?: number) => v !== undefined ? [`${v}ms`, 'Latency'] : ['N/A', 'Latency']} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={28}>
                   {latencyData.map((entry, i) => (
                     <Cell key={i} fill={entry.fill} />
@@ -227,7 +227,7 @@ export function OverviewTab({ stats, resourceHistory }: OverviewTabProps) {
                   <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-muted/20" />
                   <XAxis dataKey="time" hide />
                   <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 10 }} width={35} />
-                  <Tooltip {...TOOLTIP_STYLE} formatter={(v: number) => [`${v}%`, 'CPU']} labelFormatter={(l) => `Time: ${l}`} />
+                  <Tooltip {...TOOLTIP_STYLE} formatter={(v?: number) => v !== undefined ? [`${v}%`, 'CPU'] : ['N/A', 'CPU']} labelFormatter={(l) => `Time: ${l}`} />
                   <Area type="monotone" dataKey="cpu" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorCpu)" isAnimationActive={false} />
                 </AreaChart>
               </ResponsiveContainer>
@@ -253,7 +253,7 @@ export function OverviewTab({ stats, resourceHistory }: OverviewTabProps) {
                   <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-muted/20" />
                   <XAxis dataKey="time" hide />
                   <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 10 }} width={35} />
-                  <Tooltip {...TOOLTIP_STYLE} formatter={(v: number) => [`${v}%`, 'Memory']} labelFormatter={(l) => `Time: ${l}`} />
+                  <Tooltip {...TOOLTIP_STYLE} formatter={(v?: number) => v !== undefined ? [`${v}%`, 'Memory'] : ['N/A', 'Memory']} labelFormatter={(l) => `Time: ${l}`} />
                   <Area type="monotone" dataKey="memory" stroke="#8b5cf6" strokeWidth={2} fillOpacity={1} fill="url(#colorMem)" isAnimationActive={false} />
                 </AreaChart>
               </ResponsiveContainer>

@@ -35,21 +35,18 @@ export const config = {
     networkDriver: 'bridge',
     networkLabel: 'type=coderunner',
 
-    // Subnet allocation pools (must match /etc/docker/daemon.json)
-    subnetPools: [
-      {
-        name: 'pool1',
-        base: '172.80',
-        cidr: '172.80.0.0/12',
-        capacity: 4096, // 2^(24-12) /24 subnets
-      },
-      {
-        name: 'pool2',
-        base: '192.168',
-        cidr: '192.168.0.0/16',
-        capacity: 256, // 2^(24-16) /24 subnets
-      },
-    ],
+    // Subnet allocation pools — override via env vars if these clash with your LAN.
+    // Pick any two 10.x.0.0/16 ranges not used by machines on your network.
+    // Defaults: 10.201.x.x and 10.202.x.x (safe for most labs).
+    // Example: DOCKER_SUBNET_POOL1=10.210 DOCKER_SUBNET_POOL2=10.211
+    subnetPools: (() => {
+      const p1 = (process.env.DOCKER_SUBNET_POOL1 || '10.201').replace(/\.$/, '');
+      const p2 = (process.env.DOCKER_SUBNET_POOL2 || '10.202').replace(/\.$/, '');
+      return [
+        { name: 'pool1', base: p1, cidr: `${p1}.0.0/16`, capacity: 4096 },
+        { name: 'pool2', base: p2, cidr: `${p2}.0.0/16`, capacity: 4096 },
+      ];
+    })(),
   },
 
   // === Session Container Management ===

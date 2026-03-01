@@ -130,7 +130,7 @@ describe('DockerClient', () => {
   });
 
   describe('createContainer', () => {
-    it('should create and start a container with correct options', async () => {
+    it('should create a container with correct options', async () => {
       const id = await createContainer({
         image: 'python-runtime:latest',
         labels: { type: 'coderunner', sessionId: 'sess-1' },
@@ -141,7 +141,8 @@ describe('DockerClient', () => {
       });
 
       expect(id).toBe('abc123container');
-      expect(mockStart).toHaveBeenCalled();
+      // start() is called separately via startContainer() — not inside createContainer
+      expect(mockStart).not.toHaveBeenCalled();
 
       expect(mockDockerInstance.createContainer).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -157,13 +158,28 @@ describe('DockerClient', () => {
       );
     });
 
-    it('should use default cmd when not provided', async () => {
+    it('should omit Cmd when cmd is not provided (e.g. database containers)', async () => {
       await createContainer({
         image: 'node-runtime',
         labels: {},
         networkName: 'net',
         memory: '128m',
         cpus: '1',
+        // cmd intentionally omitted — pool passes undefined for SQL images
+      });
+
+      const callArg = mockDockerInstance.createContainer.mock.calls[0][0];
+      expect(callArg).not.toHaveProperty('Cmd');
+    });
+
+    it('should pass explicit Cmd when provided', async () => {
+      await createContainer({
+        image: 'node-runtime',
+        labels: {},
+        networkName: 'net',
+        memory: '128m',
+        cpus: '1',
+        cmd: ['tail', '-f', '/dev/null'],
       });
 
       expect(mockDockerInstance.createContainer).toHaveBeenCalledWith(

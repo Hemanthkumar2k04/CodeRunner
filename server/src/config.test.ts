@@ -33,7 +33,7 @@ describe('config', () => {
 
             const pool2 = config.network.subnetPools[1];
             expect(pool2.name).toBe('pool2');
-            expect(pool2.capacity).toBe(256);
+            expect(pool2.capacity).toBe(4096);
         });
 
         it('should have session container configuration', () => {

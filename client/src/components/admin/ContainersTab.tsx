@@ -47,8 +47,6 @@ export function ContainersTab({ stats }: ContainersTabProps) {
     { name: 'Unused', value: networks.unused, fill: '#94a3b8' },
   ];
 
-  const totalContainerOps = containers.created + containers.reused + containers.deleted || 1;
-
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       {/* Stat Cards */}

@@ -405,7 +405,7 @@ export function TestRunnerModal({ open, onOpenChange }: TestRunnerModalProps) {
                       <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-muted/20" />
                       <XAxis dataKey="name" tick={{ fontSize: 10 }} />
                       <YAxis tick={{ fontSize: 10 }} width={40} />
-                      <Tooltip {...TOOLTIP_STYLE} formatter={(v: number, name: string) => [`${v}ms`, name]} />
+                        <Tooltip {...TOOLTIP_STYLE} formatter={(v?: number) => v !== undefined ? [`${v}ms`, 'Latency'] : ['N/A', 'Latency']} />
                       <Bar dataKey="p50" name="P50" fill="#3b82f6" radius={[2, 2, 0, 0]} barSize={14} />
                       <Bar dataKey="p95" name="P95" fill="#8b5cf6" radius={[2, 2, 0, 0]} barSize={14} />
                       <Bar dataKey="p99" name="P99" fill="#ec4899" radius={[2, 2, 0, 0]} barSize={14} />
@@ -423,7 +423,7 @@ export function TestRunnerModal({ open, onOpenChange }: TestRunnerModalProps) {
                       <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-muted/20" />
                       <XAxis dataKey="name" tick={{ fontSize: 10 }} />
                       <YAxis tick={{ fontSize: 10 }} width={40} />
-                      <Tooltip {...TOOLTIP_STYLE} formatter={(v: number) => [`${v.toFixed(2)} req/s`, 'Throughput']} />
+                      <Tooltip {...TOOLTIP_STYLE} formatter={(v?: number) => v !== undefined ? [`${v.toFixed(2)} req/s`, 'Throughput'] : ['N/A', 'Throughput']} />
                       <Bar dataKey="reqsPerSec" radius={[4, 4, 0, 0]} barSize={24}>
                         {buildReqsChartData().map((entry, i) => (
                           <Cell key={i} fill={entry.fill} />

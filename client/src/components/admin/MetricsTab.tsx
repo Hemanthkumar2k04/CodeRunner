@@ -206,7 +206,7 @@ export function MetricsTab({ adminKey, dailyMetrics }: MetricsTabProps) {
                 <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-muted/20" />
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 10 }} width={40} tickFormatter={(v) => `${v}ms`} />
-                <Tooltip {...TOOLTIP_STYLE} formatter={(v: number, name: string) => [`${v}ms`, name.toUpperCase()]} />
+                <Tooltip {...TOOLTIP_STYLE} formatter={(v?: number) => v !== undefined ? [`${v}ms`, 'ms'] : ['N/A', 'ms']} />
                 <Bar dataKey="avg" name="avg" fill="#64748b" radius={[2, 2, 0, 0]} barSize={12} />
                 <Bar dataKey="p50" name="p50" fill="#3b82f6" radius={[2, 2, 0, 0]} barSize={12} />
                 <Bar dataKey="p95" name="p95" fill="#8b5cf6" radius={[2, 2, 0, 0]} barSize={12} />
@@ -251,7 +251,7 @@ export function MetricsTab({ adminKey, dailyMetrics }: MetricsTabProps) {
                   <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-muted/20" />
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 10 }} width={40} tickFormatter={(v) => `${v}ms`} />
-                  <Tooltip {...TOOLTIP_STYLE} formatter={(v: number) => [`${v}ms`, 'Avg Total']} />
+                  <Tooltip {...TOOLTIP_STYLE} formatter={(v?: number) => v !== undefined ? [`${v}ms`, 'Avg Total'] : ['N/A', 'Avg Total']} />
                   <Bar dataKey="avgTotal" radius={[4, 4, 0, 0]} barSize={36}>
                     {languageChartData.map((entry, i) => (
                       <Cell key={i} fill={entry.fill} />

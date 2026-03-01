@@ -4,11 +4,11 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import { Trash2, ChevronDown, ChevronUp, RefreshCw, FileBarChart, Clock, Zap, Activity } from 'lucide-react';
 
@@ -229,7 +229,7 @@ export function LoadTestsTab({ adminKey }: LoadTestsTabProps) {
                             <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-muted/20" />
                             <XAxis dataKey="name" tick={{ fontSize: 10 }} />
                             <YAxis tick={{ fontSize: 10 }} width={40} />
-                            <Tooltip {...TOOLTIP_STYLE} formatter={(v: number, n: string) => [`${v}ms`, n]} />
+                            <Tooltip {...TOOLTIP_STYLE} formatter={(v?: number) => v !== undefined ? [`${v}ms`, 'Latency'] : ['N/A', 'Latency']} />
                             <Bar dataKey="p50" name="P50" fill="#3b82f6" radius={[2, 2, 0, 0]} barSize={12} />
                             <Bar dataKey="p95" name="P95" fill="#8b5cf6" radius={[2, 2, 0, 0]} barSize={12} />
                             <Bar dataKey="p99" name="P99" fill="#ec4899" radius={[2, 2, 0, 0]} barSize={12} />

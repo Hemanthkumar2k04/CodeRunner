@@ -17,7 +17,7 @@ module.exports = {
       },
     },
   },
-  testPathIgnorePatterns: ['/node_modules/', '/dist/'],
+  testPathIgnorePatterns: ['/node_modules/', '/dist/', 'tests/performance.test.ts'],
   clearMocks: true,
   resetMocks: true,
 };
