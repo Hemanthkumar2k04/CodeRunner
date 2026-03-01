@@ -71,7 +71,7 @@ describe('networkManager', () => {
             const stats = getSubnetStats();
             expect(stats.totalAvailable).toBeGreaterThan(0);
             expect(stats.poolStats.pool1.available).toBe(4096);
-            expect(stats.poolStats.pool2.available).toBe(256);
+            expect(stats.poolStats.pool2.available).toBe(4096);
         });
 
         it('should have utilization percentage', () => {

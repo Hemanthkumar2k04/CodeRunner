@@ -8,7 +8,7 @@ const path = require('path');
 
 const PROGRAMS_DIR = path.join(__dirname, '../programs');
 
-const LANGUAGES = ['python', 'javascript', 'java', 'cpp']; // SQL excluded due to MySQL container startup overhead
+const LANGUAGES = ['python', 'javascript', 'java', 'cpp']; // SQL excluded due to PostgreSQL container startup overhead
 
 /**
  * Read all programs for a given language

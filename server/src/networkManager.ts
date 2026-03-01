@@ -14,8 +14,11 @@ import {
  * Network Manager for Session-based Docker Networks
  * 
  * Manages isolated Docker networks for code execution sessions.
- * Each session gets its own network with an explicitly allocated subnet
- * from configured address pools (172.80.0.0/12 and 10.10.0.0/16).
+ * Each session gets its own network with an explicitly allocated /28 subnet
+ * from configured address pools (10.201.0.0/16 and 10.202.0.0/16).
+ * These ranges are deep inside RFC 1918 10.0.0.0/8 space and chosen to
+ * avoid collisions with typical LAN subnets (192.168.x.x, 10.0-10.x),
+ * Docker's default bridge (172.17.x.x), and the 172.16.0.0/12 corporate VPN range.
  * 
  * This design prevents subnet exhaustion when running many concurrent sessions.
  */
@@ -96,14 +99,17 @@ class SubnetAllocator {
   }
 
   private generateSubnet(pool: (typeof config.network.subnetPools)[number], counter: number): string | null {
+    // Each pool is a /16. We carve it into /28 subnets (16 IPs each).
+    // counter 0   → 10.x.0.0/28
+    // counter 1   → 10.x.0.16/28
+    // counter 15  → 10.x.0.240/28
+    // counter 16  → 10.x.1.0/28   etc.
+    const third = Math.floor(counter / 16);   // 0..255
+    const fourth = (counter % 16) * 16;       // 0,16,32..240
     if (pool.name === 'pool1') {
-      // 172.80.0.0/12 generates 4096 /24 subnets
-      const second = 80 + Math.floor(counter / 256);
-      const third = counter % 256;
-      return `172.${second}.${third}.0/24`;
+      return `10.201.${third}.${fourth}/28`;
     } else if (pool.name === 'pool2') {
-      // 192.168.0.0/16 generates 256 /24 subnets
-      return `192.168.${counter}.0/24`;
+      return `10.202.${third}.${fourth}/28`;
     }
     return null;
   }

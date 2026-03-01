@@ -27,7 +27,7 @@ const extensionToLanguage: Record<string, SupportedLanguage> = {
   '.h': 'cpp',
   '.hpp': 'cpp',
   
-  // SQL/MySQL
+  // SQL/PostgreSQL
   '.sql': 'sql',
 };
 

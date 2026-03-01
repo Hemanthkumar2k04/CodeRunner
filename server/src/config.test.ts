@@ -33,7 +33,7 @@ describe('config', () => {
 
             const pool2 = config.network.subnetPools[1];
             expect(pool2.name).toBe('pool2');
-            expect(pool2.capacity).toBe(256);
+            expect(pool2.capacity).toBe(4096);
         });
 
         it('should have session container configuration', () => {
@@ -101,7 +101,7 @@ describe('config', () => {
 
         it('should return config for sql', () => {
             const runtime = getRuntimeConfig('sql');
-            expect(runtime.image).toBe('mysql-runtime');
+            expect(runtime.image).toBe('postgres-runtime');
         });
 
         it('should throw for unsupported language', () => {

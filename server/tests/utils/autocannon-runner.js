@@ -32,7 +32,7 @@ const LANGUAGE_TIMEOUTS = {
     javascript: 30000,  // Fast: interpreted, quick container startup (30s)
     java: 45000,        // Medium: JVM startup overhead (45s)
     cpp: 60000,         // Slow: compilation required (g++ takes time) (60s)
-    sql: 60000          // Slow: MySQL container initialization + query execution (60s)
+    sql: 60000          // Slow: PostgreSQL container initialization + query execution (60s)
 };
 
 /**
@@ -78,7 +78,8 @@ async function runSingleTest(program, intensity, serverUrl = 'http://localhost:3
             timeout: timeout,
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-Load-Test': 'true'
             },
             body: JSON.stringify(body)
         }, (err, result) => {
@@ -107,8 +108,10 @@ function processResults(result, program) {
     const requests = result.requests;
     const throughput = result.throughput;
     
+    // non2xx includes rate-limited (429), server errors, etc.
+    const non2xx = result.non2xx || 0;
+    const successful2xx = Math.max(0, requests.total - non2xx);
     const totalAttempts = requests.total + result.errors + result.timeouts;
-    const successfulRequests = requests.total;
     
     return {
         program: {
@@ -118,10 +121,11 @@ function processResults(result, program) {
         },
         duration: result.duration,
         requests: requests.total,
-        errors: result.errors,
+        errors: result.errors + non2xx,
         timeouts: result.timeouts,
+        non2xx,
         successRate: totalAttempts > 0
-            ? ((successfulRequests / totalAttempts) * 100).toFixed(2)
+            ? ((successful2xx / totalAttempts) * 100).toFixed(2)
             : '0.00',
         latency: {
             mean: latency.mean,
@@ -137,7 +141,7 @@ function processResults(result, program) {
             mean: throughput.mean,
             total: throughput.total
         },
-        requestsPerSecond: (requests.total / (result.duration / 1000)).toFixed(2)
+        requestsPerSecond: (requests.total / result.duration).toFixed(2)
     };
 }
 

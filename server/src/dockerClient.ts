@@ -42,7 +42,7 @@ const docker = new Docker({ socketPath: resolveDockerSocket() });
 export interface CreateContainerOptions {
   image: string;
   labels: Record<string, string>;
-  networkName: string;
+  networkName?: string;
   memory: string;
   cpus: string;
   env?: string[];
@@ -60,18 +60,28 @@ export async function createContainer(opts: CreateContainerOptions): Promise<str
   const container = await docker.createContainer({
     Image: opts.image,
     Labels: opts.labels,
-    Cmd: opts.cmd ?? ['tail', '-f', '/dev/null'],
+    // For database containers (e.g., PostgreSQL), omit Cmd so the image's default
+    // entrypoint starts the server. Other containers use 'tail -f /dev/null' to stay alive.
+    ...(opts.cmd !== undefined ? { Cmd: opts.cmd } : {}),
     Env: opts.env,
     HostConfig: {
       Memory: memoryBytes,
       NanoCpus: nanoCpus,
-      NetworkMode: opts.networkName,
+      // If network is omitted, Docker puts it on the default bridge initially
+      ...(opts.networkName ? { NetworkMode: opts.networkName } : {}),
     },
     WorkingDir: '/app',
   });
 
-  await container.start();
   return container.id;
+}
+
+/**
+ * Start an existing container.
+ */
+export async function startContainer(containerId: string): Promise<void> {
+  const container = docker.getContainer(containerId);
+  await container.start();
 }
 
 /**
@@ -425,7 +435,7 @@ export async function pruneNetworks(label: string): Promise<string[]> {
 
 /**
  * Check if a container is healthy via a command.
- * Used for MySQL readiness checking.
+ * Used for PostgreSQL readiness checking.
  */
 export async function waitForHealthy(
   containerId: string,

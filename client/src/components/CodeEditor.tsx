@@ -171,25 +171,6 @@ export function CodeEditor({ onRunClick, onStopClick }: CodeEditorProps) {
         handleRunClick();
       }
     }
-
-    const isTestMode = () => {
-      try {
-        return localStorage.getItem("test-mode") === "on";
-      } catch {
-        return false;
-      }
-    };
-
-    if (!isTestMode()) {
-      const isCopy = e.ctrlKey && e.key === 'c';
-      const isPaste = e.ctrlKey && e.key === 'v';
-      const isCut = e.ctrlKey && e.key === 'x';
-
-      if (isCopy || isPaste || isCut) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
-    }
   }, [handleSave, activeFile, execLanguage, isRunning, handleRunClick]);
 
   // Empty state when no file is open

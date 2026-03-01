@@ -23,7 +23,7 @@ import { logger } from './logger';
 import { adminMetrics } from './adminMetrics';
 import adminRoutes from './adminRoutes';
 import { initDB, getStudentByRegNo } from './db';
-import { startLoadTest, getTestRunner } from './testRunner';
+import { startLoadTest, getTestRunner, stopTest } from './testRunner';
 const { getReport } = require('../tests/utils/report-manager');
 
 // Re-read environment variables into config after dotenv load
@@ -136,6 +136,7 @@ const apiRunLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many execution requests. Please wait and try again.' },
+  skip: (req) => req.headers['x-load-test'] === 'true',
 });
 app.use('/api/run', apiRunLimiter);
 
@@ -254,10 +255,15 @@ function getRunCommand(language: string, entryFile: string): string {
     }
     case 'java': {
       const className = entryFile.split('/').pop()?.replace('.java', '') || entryFile.replace('.java', '');
-      return `javac -d . $(find . -name "*.java") && java ${shellEscape(className)}`;
+      // -XX:TieredStopAtLevel=1  → only C1 compiler (fast startup, skip C2 optimiser)
+      // -XX:+UseSerialGC         → minimal GC overhead for short-lived processes
+      // -Xshare:auto             → use CDS archive baked into the image
+      // -Xms8m -Xmx256m         → small heap to reduce GC pauses and startup cost
+      const jvmFlags = '-XX:TieredStopAtLevel=1 -XX:+UseSerialGC -Xshare:auto -Xms8m -Xmx256m';
+      return `javac -d . $(find . -name "*.java") && java ${jvmFlags} ${shellEscape(className)}`;
     }
     case 'sql': {
-      return `MYSQL_PWD=root mysql -u root < ${shellEscape(entryFile)}`;
+      return `PGPASSWORD=root psql -U root -d devdb -f ${shellEscape(entryFile)}`;
     }
     default: throw new Error(`Unsupported language: ${language}`);
   }
@@ -840,6 +846,8 @@ io.on('connection', (socket) => {
   });
 
   // Load test runner handlers
+  let activeLoadTestId: string | null = null;
+
   socket.on('loadtest:start', async (data: { intensity: string; languages?: string[] }) => {
     logger.info('WebSocket', `Received loadtest:start event: ${JSON.stringify(data)}`);
     try {
@@ -852,6 +860,7 @@ io.on('connection', (socket) => {
         return;
       }
 
+      activeLoadTestId = testId;
       logger.info('WebSocket', `Test runner created: ${testRunner.id}`);
 
       // Send initial acknowledgment
@@ -871,6 +880,7 @@ io.on('connection', (socket) => {
 
       // Listen for completion
       testRunner.on('complete', async (result) => {
+        activeLoadTestId = null;
         // Load the report to get the summary
         let summary = null;
         if (result.reportId) {
@@ -888,16 +898,24 @@ io.on('connection', (socket) => {
 
       // Listen for errors
       testRunner.on('error', (error) => {
+        activeLoadTestId = null;
         socket.emit('loadtest:error', {
           testId: testRunner.id,
           error: error.message
         });
       });
 
-      // Test is already running from startLoadTest()
-
     } catch (error: any) {
       socket.emit('loadtest:error', { error: error.message });
+    }
+  });
+
+  socket.on('loadtest:stop', (data: { testId: string }) => {
+    logger.info('WebSocket', `Received loadtest:stop for test: ${data.testId}`);
+    const stopped = stopTest(data.testId);
+    if (stopped) {
+      activeLoadTestId = null;
+      socket.emit('loadtest:error', { testId: data.testId, error: 'Test cancelled by user' });
     }
   });
 
@@ -906,6 +924,12 @@ io.on('connection', (socket) => {
 
     // Track client disconnection
     adminMetrics.trackClientDisconnected(socket.id);
+
+    // Stop any running load test for this socket
+    if (activeLoadTestId) {
+      stopTest(activeLoadTestId);
+      activeLoadTestId = null;
+    }
 
     if (flushBufferTimer) {
       clearTimeout(flushBufferTimer);
@@ -1183,7 +1207,7 @@ if (require.main === module) {
       'javascript-runtime',
       'java-runtime',
       'cpp-runtime',
-      'mysql-runtime'
+      'postgres-runtime'
     ];
 
     for (const imageName of requiredImages) {

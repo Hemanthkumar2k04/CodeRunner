@@ -111,8 +111,8 @@ class TestRunner extends EventEmitter {
     }
 
     private parseProgress(text: string) {
-        // Parse progress messages from test output
-        const progressMatch = text.match(/Progress: (\d+)\/(\d+) tests completed/);
+        // Parse progress messages from test output (may have \r and leading spaces)
+        const progressMatch = text.match(/Progress:\s*(\d+)\/(\d+)\s*tests completed/);
         if (progressMatch) {
             const current = parseInt(progressMatch[1]);
             const total = parseInt(progressMatch[2]);
@@ -120,6 +120,16 @@ class TestRunner extends EventEmitter {
             this.emit('progress', {
                 current,
                 total,
+                status: 'running'
+            });
+        }
+
+        // Parse language + test type being tested
+        const langTypeMatch = text.match(/Running (simple|complex) test:\s*(.+)/)
+        if (langTypeMatch) {
+            this.emit('progress', {
+                type: langTypeMatch[1],
+                message: `Running ${langTypeMatch[1]} test: ${langTypeMatch[2].trim()}`,
                 status: 'running'
             });
         }
