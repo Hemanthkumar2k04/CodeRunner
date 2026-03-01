@@ -42,7 +42,7 @@ const docker = new Docker({ socketPath: resolveDockerSocket() });
 export interface CreateContainerOptions {
   image: string;
   labels: Record<string, string>;
-  networkName: string;
+  networkName?: string;
   memory: string;
   cpus: string;
   env?: string[];
@@ -65,13 +65,21 @@ export async function createContainer(opts: CreateContainerOptions): Promise<str
     HostConfig: {
       Memory: memoryBytes,
       NanoCpus: nanoCpus,
-      NetworkMode: opts.networkName,
+      // If network is omitted, Docker puts it on the default bridge initially
+      ...(opts.networkName ? { NetworkMode: opts.networkName } : {}),
     },
     WorkingDir: '/app',
   });
 
-  await container.start();
   return container.id;
+}
+
+/**
+ * Start an existing container.
+ */
+export async function startContainer(containerId: string): Promise<void> {
+  const container = docker.getContainer(containerId);
+  await container.start();
 }
 
 /**

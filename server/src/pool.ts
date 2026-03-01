@@ -1,13 +1,15 @@
 import { config } from './config';
 import { logger } from './logger';
 import { adminMetrics } from './adminMetrics';
+import * as dockerClient from './dockerClient';
 import {
-  createContainer as dockerCreateContainer,
   execInContainer,
   removeContainers,
   listContainers,
   waitForHealthy,
+  startContainer,
 } from './dockerClient';
+import { getOrCreateSessionNetwork } from './networkManager';
 
 /**
  * Session Container with TTL
@@ -231,13 +233,36 @@ class SessionContainerPool {
       }
     }
 
-    // Create new container with mutex
-    logger.info('Pool', `Creating new container for ${sessionId}:${language}`);
-    const creationPromise = this.createContainer(language, sessionId, networkName);
-    this.pendingAcquisitions.set(mutexKey, creationPromise);
+    // Create new container and network concurrently with mutex
+    logger.info('Pool', `Creating new network and container for ${sessionId}:${language}`);
+
+    // We package the entire concurrent creation process into the mutex promise
+    const creationPromise = (async () => {
+      const startTime = Date.now();
+
+      // Fire network and container creation at the exact same time
+      const [networkName, containerId] = await Promise.all([
+        getOrCreateSessionNetwork(sessionId),
+        this.createContainer(language, sessionId)
+      ]);
+
+      // Connect the new container to the new network
+      await dockerClient.docker.getNetwork(networkName).connect({
+        Container: containerId
+      });
+
+      // Start the container AFTER it's connected to the network
+      await dockerClient.startContainer(containerId);
+
+      logger.debug('Pool', `Concurrent init for ${containerId.substring(0, 12)} done in ${Date.now() - startTime}ms`);
+      return { containerId, networkName };
+    })();
+
+    // We only need the container ID for the mutex map
+    this.pendingAcquisitions.set(mutexKey, creationPromise.then(res => res.containerId));
 
     try {
-      const containerId = await creationPromise;
+      const { containerId, networkName } = await creationPromise;
 
       this.metrics.containersCreated++;
       adminMetrics.trackContainerCreated(containerId);
@@ -319,26 +344,25 @@ class SessionContainerPool {
    */
   private async createContainer(
     language: string,
-    sessionId: string,
-    networkName: string
+    sessionId: string
   ): Promise<string> {
     const runtimeConfig = config.runtimes[language as keyof typeof config.runtimes];
 
     try {
       const memory = language === 'sql' ? config.docker.memorySQL : config.docker.memory;
 
-      const containerId = await dockerCreateContainer({
+      const containerId = await dockerClient.createContainer({
         image: runtimeConfig.image,
         labels: {
           'type': 'coderunner-session',
           'session': sessionId,
           'language': language,
         },
-        networkName,
         memory,
         cpus: config.docker.cpus,
         env: language === 'sql' ? ['MYSQL_ROOT_PASSWORD=root'] : undefined,
         cmd: language === 'sql' ? undefined : ['tail', '-f', '/dev/null'],
+        // NetworkMode will be set manually via network.connect() after creation
       });
 
       logger.info('Pool', `Container created: ${containerId.substring(0, 12)} (${language})`);
