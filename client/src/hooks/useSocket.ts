@@ -22,7 +22,7 @@ export const useSocket = () => {
     async (fileId: string, filePath: string, files: ExecutionFile[], language: string) => {
       const store = useEditorStore.getState();
       const sessionId = generateSessionId();
-      
+
       // Create or reset console for this file
       store.createConsole(fileId, filePath, sessionId);
       store.appendOutputToConsole(fileId, {
@@ -80,11 +80,19 @@ export const useSocket = () => {
     disconnectSocket();
   }, []);
 
+  const emitIdentity = useCallback((regNo: string, name: string) => {
+    const socket = getSocket();
+    if (socket?.connected) {
+      socket.emit('student:identity', { regNo, name });
+    }
+  }, []);
+
   return {
     runCode,
     sendInput,
     stopCode,
     disconnect,
     isConnected,
+    emitIdentity,
   };
 };

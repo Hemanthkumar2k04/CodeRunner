@@ -58,6 +58,10 @@ export default defineConfig({
         target: 'http://localhost:3000',
         changeOrigin: true,
       },
+      '/admin/students': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
       '/admin/metrics': {
         target: 'http://localhost:3000',
         changeOrigin: true,
@@ -95,6 +99,10 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/execute': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      '/api': {
         target: 'http://localhost:3000',
         changeOrigin: true,
       },

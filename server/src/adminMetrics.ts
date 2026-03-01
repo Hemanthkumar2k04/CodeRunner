@@ -61,6 +61,7 @@ class AdminMetricsService {
   private maxRequestHistory: number = 10000; // Keep last 10k requests in memory
   private maxLatenciesPerDay: number = 10000; // Cap latencies per day to bound memory
   private activeClients: Set<string> = new Set();
+  private activeClientDetails: Map<string, { regNo: string, name: string }> = new Map();
   private activeExecutions: Set<string> = new Set();
   private serverSnapshots: ServerSnapshot[] = [];
   private maxSnapshots: number = 1440; // Keep 24 hours of minute-by-minute snapshots
@@ -247,6 +248,14 @@ class AdminMetricsService {
    */
   trackClientDisconnected(clientId: string): void {
     this.activeClients.delete(clientId);
+    this.activeClientDetails.delete(clientId);
+  }
+
+  /**
+   * Track client identity (student)
+   */
+  trackClientIdentity(clientId: string, regNo: string, name: string): void {
+    this.activeClientDetails.set(clientId, { regNo, name });
   }
 
   /**
@@ -355,10 +364,16 @@ class AdminMetricsService {
    * Get current server state
    */
   getCurrentState(): any {
+    const activeStudentList = Array.from(this.activeClientDetails.entries()).map(([id, details]) => ({
+      id,
+      ...details
+    }));
+
     return {
       activeClients: this.activeClients.size,
       activeExecutions: this.activeExecutions.size,
       totalRequestsToday: this.getTodayMetrics()?.totalRequests || 0,
+      activeStudents: activeStudentList,
     };
   }
 

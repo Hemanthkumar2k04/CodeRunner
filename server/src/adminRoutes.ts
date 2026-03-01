@@ -358,5 +358,110 @@ router.get('/logs', adminAuth, (req: Request, res: Response) => {
   });
 });
 
+/**
+ * GET /admin/students - Get all students
+ */
+router.get('/students', adminAuth, async (req: Request, res: Response) => {
+  try {
+    const { getAllStudents } = await import('./db');
+    const students = await getAllStudents();
+    res.json(students);
+  } catch (error: any) {
+    res.status(500).json({ error: `Failed to fetch students: ${error.message}` });
+  }
+});
+
+/**
+ * POST /admin/students - Add a new student
+ */
+router.post('/students', adminAuth, async (req: Request, res: Response) => {
+  try {
+    const { regNo, name, department, year } = req.body;
+    if (!regNo || !name || !department || !year) {
+      return res.status(400).json({ error: 'Missing required student fields' });
+    }
+    const { addStudent } = await import('./db');
+    const student = await addStudent(regNo, name, department, year);
+    res.status(201).json(student);
+  } catch (error: any) {
+    if (error.code === '23505') { // Postgres unique violation
+      return res.status(409).json({ error: 'Register Number already exists' });
+    }
+    res.status(500).json({ error: `Failed to add student: ${error.message}` });
+  }
+});
+
+/**
+ * POST /admin/students/bulk - Add multiple students (UPSERT)
+ */
+router.post('/students/bulk', adminAuth, async (req: Request, res: Response) => {
+  try {
+    const { students } = req.body;
+    if (!Array.isArray(students) || students.length === 0) {
+      return res.status(400).json({ error: 'Missing or empty students array' });
+    }
+
+    // Validate objects roughly
+    for (const student of students) {
+      if (!student.regNo || !student.name || !student.department || !student.year) {
+        return res.status(400).json({ error: 'One or more students are missing required fields' });
+      }
+    }
+
+    const { addStudentsBulk } = await import('./db');
+    const inserted = await addStudentsBulk(students);
+    res.status(201).json({ success: true, count: inserted.length, students: inserted });
+  } catch (error: any) {
+    res.status(500).json({ error: `Failed to bulk add students: ${error.message}` });
+  }
+});
+
+/**
+ * PUT /admin/students/:id - Update an existing student
+ */
+router.put('/students/:id', adminAuth, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { regNo, name, department, year } = req.body;
+    if (isNaN(id)) {
+      return res.status(400).json({ error: 'Invalid student ID' });
+    }
+    if (!regNo || !name || !department || !year) {
+      return res.status(400).json({ error: 'Missing required student fields' });
+    }
+    const { updateStudent } = await import('./db');
+    const student = await updateStudent(id, regNo, name, department, year);
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+    res.json(student);
+  } catch (error: any) {
+    if (error.code === '23505') { // Postgres unique violation
+      return res.status(409).json({ error: 'Register Number already exists' });
+    }
+    res.status(500).json({ error: `Failed to update student: ${error.message}` });
+  }
+});
+
+/**
+ * DELETE /admin/students/:id - Delete a student
+ */
+router.delete('/students/:id', adminAuth, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return res.status(400).json({ error: 'Invalid student ID' });
+    }
+    const { deleteStudent } = await import('./db');
+    const success = await deleteStudent(id);
+    if (!success) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+    res.json({ message: 'Student deleted successfully' });
+  } catch (error: any) {
+    res.status(500).json({ error: `Failed to delete student: ${error.message}` });
+  }
+});
+
 export default router;
 export { ADMIN_KEY, adminAuth };

@@ -22,6 +22,7 @@ import { logger } from './logger';
 
 import { adminMetrics } from './adminMetrics';
 import adminRoutes from './adminRoutes';
+import { initDB, getStudentByRegNo } from './db';
 import { startLoadTest, getTestRunner } from './testRunner';
 const { getReport } = require('../tests/utils/report-manager');
 
@@ -64,6 +65,9 @@ try {
 } catch (error) {
   logger.error('Server', `Startup cleanup failed: ${error}`);
 }
+
+// Initialize PostgreSQL Database
+initDB();
 
 const execAsync = promisify(exec);
 
@@ -134,6 +138,25 @@ const apiRunLimiter = rateLimit({
   message: { error: 'Too many execution requests. Please wait and try again.' },
 });
 app.use('/api/run', apiRunLimiter);
+
+// Student Verification API Endpoint
+app.post('/api/verify-student', async (req, res) => {
+  const { regNo } = req.body;
+  if (!regNo) {
+    return res.status(400).json({ error: 'Register Number is required' });
+  }
+
+  try {
+    const student = await getStudentByRegNo(regNo);
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found. Please check your Register Number.' });
+    }
+    return res.json(student);
+  } catch (error) {
+    logger.error('Database', `Error verifying student: ${error}`);
+    return res.status(500).json({ error: 'Internal server error while verifying student' });
+  }
+});
 
 // Admin routes - protected by key authentication
 app.use('/admin', adminRoutes);
@@ -415,6 +438,11 @@ io.on('connection', (socket) => {
 
   // Track client connection
   adminMetrics.trackClientConnected(socket.id);
+
+  socket.on('student:identity', (data: { regNo: string, name: string }) => {
+    adminMetrics.trackClientIdentity(socket.id, data.regNo, data.name);
+    logger.info('Client', `Client ${socket.id} identified as ${data.name} (${data.regNo})`);
+  });
 
   let currentProcess: any = null;
   let containerId: string | null = null;

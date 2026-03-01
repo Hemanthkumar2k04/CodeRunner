@@ -29,12 +29,20 @@ import {
   RotateCcw,
   Zap,
   LayoutDashboard,
-  Container,
   FileText,
   Settings,
   AlertCircle,
   ArrowLeft,
+  Users,
+  UserPlus,
+  Trash2,
+  Edit2,
+  Save,
+  X,
+  Upload
 } from 'lucide-react';
+import Papa from 'papaparse';
+import * as xlsx from 'xlsx';
 
 interface SystemMetrics {
   cpu: number;
@@ -85,6 +93,7 @@ interface ServerStats {
   clients: {
     activeClients: number;
     activeExecutions: number;
+    activeStudents?: { id: string, regNo: string, name: string }[];
   };
   metrics: {
     today: DailyMetrics;
@@ -263,6 +272,333 @@ function LogsTab({ adminKey }: { adminKey: string }) {
           <div ref={logsEndRef} />
         </div>
       </div>
+    </div>
+  );
+}
+
+interface Student {
+  id: number;
+  regNo: string;
+  name: string;
+  department: string;
+  year: string;
+  created_at: string;
+}
+
+function StudentsTab({ adminKey }: { adminKey: string }) {
+  const [students, setStudents] = useState<Student[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Add/Edit state
+  const [isAdding, setIsAdding] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [formData, setFormData] = useState({ regNo: '', name: '', department: '', year: '' });
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const normalizeYear = (val: string): string => {
+    const norm = String(val).trim().toLowerCase();
+    if (['1', 'i', 'first'].includes(norm)) return 'I';
+    if (['2', 'ii', 'second'].includes(norm)) return 'II';
+    if (['3', 'iii', 'third'].includes(norm)) return 'III';
+    if (['4', 'iv', 'fourth'].includes(norm)) return 'IV';
+    return String(val).trim().toUpperCase();
+  };
+
+  const normalizeDept = (val: string): string => {
+    const norm = String(val).trim().toLowerCase();
+    const map: Record<string, string> = {
+      'computer science': 'CSE',
+      'computer science and engineering': 'CSE',
+      'cse': 'CSE',
+      'information technology': 'IT',
+      'it': 'IT',
+      'electronics and communication': 'ECE',
+      'electronics and communication engineering': 'ECE',
+      'ece': 'ECE',
+      'electrical and electronics': 'EEE',
+      'electrical and electronics engineering': 'EEE',
+      'eee': 'EEE',
+      'mechanical': 'MECH',
+      'mechanical engineering': 'MECH',
+      'mech': 'MECH',
+      'civil': 'CIVIL',
+      'civil engineering': 'CIVIL',
+      'artificial intelligence and data science': 'AI&DS',
+      'ai&ds': 'AI&DS',
+      'aids': 'AI&DS',
+      'artificial intelligence and machine learning': 'AIML',
+      'aiml': 'AIML',
+      'ai&ml': 'AIML'
+    };
+    return map[norm] || String(val).trim().toUpperCase();
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const fileName = file.name.toLowerCase();
+    let parsedData: any[] = [];
+
+    try {
+      setLoading(true);
+      if (fileName.endsWith('.csv')) {
+        const text = await file.text();
+        const result = Papa.parse(text, { header: true, skipEmptyLines: true });
+        parsedData = result.data;
+      } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+        const arrayBuffer = await file.arrayBuffer();
+        const workbook = xlsx.read(arrayBuffer, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        parsedData = xlsx.utils.sheet_to_json(worksheet, { defval: '' });
+      } else {
+        throw new Error('Unsupported file format. Please upload a CSV or Excel file.');
+      }
+
+      const normalizedStudents = parsedData.map((row: any) => {
+        const getVal = (keys: string[]) => {
+          const key = Object.keys(row).find(k => keys.includes(k.toLowerCase().trim()));
+          return key ? String(row[key] || '') : '';
+        };
+
+        const regNo = getVal(['regno', 'reg_no', 'register number', 'registration number', 'reg no']);
+        const name = getVal(['name', 'student name']);
+        const department = getVal(['department', 'dept']);
+        const year = getVal(['year', 'yr']);
+
+        if (!regNo || !name || !department || !year) return null;
+
+        return {
+          regNo: regNo.trim(),
+          name: name.trim(),
+          department: normalizeDept(department),
+          year: normalizeYear(year)
+        };
+      }).filter(Boolean);
+
+      if (normalizedStudents.length === 0) {
+        throw new Error('No valid student records found. Check column headers (RegNo, Name, Department, Year).');
+      }
+
+      const res = await fetch('/admin/students/bulk', {
+        method: 'POST',
+        headers: {
+          'X-Admin-Key': adminKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ students: normalizedStudents })
+      });
+
+      const resData = await res.json();
+
+      if (!res.ok) {
+        throw new Error(resData.error || 'Failed to bulk import students');
+      }
+
+      alert(`Successfully imported ${resData.count} students!`);
+      await fetchStudents();
+
+    } catch (err: any) {
+      alert(err.message);
+      setLoading(false);
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const fetchStudents = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await fetch('/admin/students', {
+        headers: { 'X-Admin-Key': adminKey }
+      });
+      if (!res.ok) throw new Error('Failed to fetch students');
+      const data = await res.json();
+      setStudents(data);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [adminKey]);
+
+  useEffect(() => {
+    fetchStudents();
+  }, [fetchStudents]);
+
+  const handleSave = async () => {
+    try {
+      if (!formData.regNo || !formData.name || !formData.department || !formData.year) {
+        alert('All fields are required');
+        return;
+      }
+
+      const url = editingId ? `/admin/students/${editingId}` : '/admin/students';
+      const method = editingId ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
+        headers: {
+          'X-Admin-Key': adminKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(formData)
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to save student');
+      }
+
+      await fetchStudents();
+      cancelEdit();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this student?')) return;
+    try {
+      const res = await fetch(`/admin/students/${id}`, {
+        method: 'DELETE',
+        headers: { 'X-Admin-Key': adminKey }
+      });
+      if (!res.ok) throw new Error('Failed to delete student');
+      await fetchStudents();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const startEdit = (student: Student) => {
+    setEditingId(student.id);
+    setFormData({ regNo: student.regNo, name: student.name, department: student.department, year: student.year });
+    setIsAdding(false);
+  };
+
+  const startAdd = () => {
+    setIsAdding(true);
+    setEditingId(null);
+    setFormData({ regNo: '', name: '', department: '', year: '' });
+  };
+
+  const cancelEdit = () => {
+    setIsAdding(false);
+    setEditingId(null);
+    setFormData({ regNo: '', name: '', department: '', year: '' });
+  };
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="flex justify-between items-center bg-card p-4 rounded-lg border shadow-sm">
+        <div>
+          <h2 className="text-xl font-bold flex items-center gap-2"><Users className="w-5 h-5 text-primary" /> Student Management</h2>
+          <p className="text-sm text-muted-foreground mt-1">Manage authorized users for the CodeRunner Lab</p>
+        </div>
+        {!isAdding && !editingId && (
+          <div className="flex gap-2">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleImportFile}
+              accept=".csv,.xlsx,.xls"
+              className="hidden"
+            />
+            <Button onClick={() => fileInputRef.current?.click()} size="sm" variant="outline">
+              <Upload className="w-4 h-4 mr-2" />
+              Import CSV/Excel
+            </Button>
+            <Button onClick={startAdd} size="sm">
+              <UserPlus className="w-4 h-4 mr-2" />
+              Add Student
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {(isAdding || editingId) && (
+        <Card className="border-primary/50 shadow-sm animate-in fade-in slide-in-from-top-2">
+          <CardHeader>
+            <CardTitle className="text-lg">{isAdding ? 'Add New Student' : 'Edit Student'}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="space-y-2">
+                <label className="text-xs font-medium">Register No</label>
+                <Input value={formData.regNo} onChange={e => setFormData({ ...formData, regNo: e.target.value })} placeholder="e.g. 310621104000" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-medium">Name</label>
+                <Input value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="e.g. John Doe" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-medium">Department</label>
+                <Input value={formData.department} onChange={e => setFormData({ ...formData, department: e.target.value })} placeholder="e.g. CSE" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-medium">Year</label>
+                <Input value={formData.year} onChange={e => setFormData({ ...formData, year: e.target.value })} placeholder="e.g. III" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="outline" onClick={cancelEdit}><X className="w-4 h-4 mr-2" /> Cancel</Button>
+              <Button onClick={handleSave}><Save className="w-4 h-4 mr-2" /> Save</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardContent className="p-0">
+          <div className="rounded-md border-0">
+            <table className="w-full text-sm">
+              <thead className="border-b bg-muted/50 text-left">
+                <tr>
+                  <th className="px-4 py-3 font-medium text-muted-foreground">Reg No</th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground">Name</th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground md:table-cell hidden">Department</th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground md:table-cell hidden">Year</th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground md:table-cell hidden text-right">Created</th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground text-right w-[120px]">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan={6} className="p-8 text-center"><RefreshCw className="w-6 h-6 animate-spin mx-auto text-muted-foreground" /></td></tr>
+                ) : error ? (
+                  <tr><td colSpan={6} className="p-8 text-center text-destructive">{error}</td></tr>
+                ) : students.length === 0 ? (
+                  <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">No students found in the database. Add one to get started.</td></tr>
+                ) : (
+                  students.map(student => (
+                    <tr key={student.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-3 font-medium">{student.regNo}</td>
+                      <td className="px-4 py-3">{student.name}</td>
+                      <td className="px-4 py-3 md:table-cell hidden">{student.department}</td>
+                      <td className="px-4 py-3 md:table-cell hidden">{student.year}</td>
+                      <td className="px-4 py-3 md:table-cell hidden text-muted-foreground text-xs text-right whitespace-nowrap">
+                        {new Date(student.created_at).toLocaleDateString()}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-500 hover:text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30" onClick={() => startEdit(student)}>
+                            <Edit2 className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30" onClick={() => handleDelete(student.id)}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -641,12 +977,12 @@ export function AdminPage() {
             Metrics
           </Button>
           <Button
-            variant={activeTab === 'containers' ? 'secondary' : 'ghost'}
+            variant={activeTab === 'students' ? 'secondary' : 'ghost'}
             className="w-full justify-start"
-            onClick={() => setActiveTab('containers')}
+            onClick={() => setActiveTab('students')}
           >
-            <Container className="h-4 w-4 mr-2" />
-            Containers
+            <Users className="h-4 w-4 mr-2" />
+            Students
           </Button>
           <Button
             variant={activeTab === 'logs' ? 'secondary' : 'ghost'}
@@ -925,9 +1261,48 @@ export function AdminPage() {
                   </CardContent>
                 </Card>
               </div>
+
+              {/* Active Students Table */}
+              <Card className="shadow-sm mt-6">
+                <CardHeader>
+                  <CardTitle>Connected Students</CardTitle>
+                  <CardDescription>Live session details of verified students</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="rounded-md border">
+                    <div className="max-h-[300px] overflow-auto">
+                      <table className="w-full text-sm">
+                        <thead className="border-b bg-muted/50 text-left sticky top-0">
+                          <tr>
+                            <th className="px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">Register No</th>
+                            <th className="px-4 py-3 font-medium text-muted-foreground">Name</th>
+                            <th className="px-4 py-3 font-medium text-muted-foreground text-right">Socket ID</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {stats.clients.activeStudents && stats.clients.activeStudents.length > 0 ? (
+                            stats.clients.activeStudents.map((student) => (
+                              <tr key={student.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                                <td className="px-4 py-3 font-medium">{student.regNo}</td>
+                                <td className="px-4 py-3">{student.name}</td>
+                                <td className="px-4 py-3 text-right text-muted-foreground font-mono text-xs">{student.id.substring(0, 8)}...</td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan={3} className="px-4 py-8 text-center text-muted-foreground">
+                                No students currently connected via verification portal.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           )}
-
           {activeTab === 'metrics' && (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 animate-in fade-in duration-500">
               {/* Reusing existing metric cards logic but adapting layout */}
@@ -948,18 +1323,18 @@ export function AdminPage() {
                 <CardContent><div className="text-3xl font-bold">{stats.metrics.today.uniqueContainers}</div></CardContent>
               </Card>
             </div>
-          )}
+          )
+          }
 
-          {/* Placeholders for other tabs */}
-          {activeTab === 'containers' && <div className="p-10 text-center text-muted-foreground">Detailed container management coming soon...</div>}
+          {activeTab === 'students' && <StudentsTab adminKey={adminKey} />}
           {activeTab === 'logs' && <LogsTab adminKey={adminKey} />}
           {activeTab === 'settings' && <div className="p-10 text-center text-muted-foreground">Settings panel coming soon...</div>}
 
-        </div>
-      </main>
+        </div >
+      </main >
 
       {/* Test Runner Modal */}
-      <TestRunnerModal open={showTestModal} onOpenChange={setShowTestModal} />
-    </div>
+      < TestRunnerModal open={showTestModal} onOpenChange={setShowTestModal} />
+    </div >
   );
 }

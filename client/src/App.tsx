@@ -11,6 +11,7 @@ import { CodeEditor } from './components/CodeEditor';
 import { Console } from './components/Console';
 import { HomePage } from './components/HomePage';
 import { LabPage } from './components/LabPage';
+import { StudentLoginModal } from './components/StudentLoginModal';
 import { useSocket } from './hooks/useSocket';
 
 import { useEditorStore } from './stores/useEditorStore';
@@ -34,7 +35,7 @@ function LoadingSpinner() {
 }
 
 function EditorPage() {
-  const { runCode, stopCode, disconnect } = useSocket();
+  const { runCode, stopCode, disconnect, emitIdentity } = useSocket();
   const files = useEditorStore((state: EditorState) => state.files);
   const rootIds = useEditorStore((state: EditorState) => state.rootIds);
   const activeFileId = useEditorStore((state: EditorState) => state.activeFileId);
@@ -53,6 +54,63 @@ function EditorPage() {
   // Resize state (desktop only)
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Student Validation & Fullscreen Enforcements
+  const [isVerified, setIsVerified] = useState(false);
+  const [isFullscreenLockActive, setIsFullscreenLockActive] = useState(false);
+
+  // Check test mode bypass
+  const isTestMode = () => {
+    try {
+      return localStorage.getItem("test-mode") === "on";
+    } catch {
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    // If in test mode, auto-verify and skip locks
+    if (isTestMode()) {
+      setIsVerified(true);
+      return;
+    }
+
+    // Enforce Fullscreen changes
+    const handleFullscreenChange = () => {
+      if (!isTestMode() && isVerified && !document.fullscreenElement) {
+        // Exited fullscreen -> lock editor
+        setIsFullscreenLockActive(true);
+      } else {
+        setIsFullscreenLockActive(false);
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, [isVerified]);
+
+  const requestFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      }
+      setIsFullscreenLockActive(false);
+    } catch (err) {
+      console.error("Failed to enter fullscreen", err);
+    }
+  };
+
+  const handleStudentVerified = async (_student: { regNo: string; name: string }) => {
+    setIsVerified(true);
+
+    // Attempt fullscreen
+    if (!isTestMode()) {
+      await requestFullscreen();
+    }
+
+    // Tell the backend who we are
+    emitIdentity(_student.regNo, _student.name);
+  };
 
   // Track if any code is running to auto-expand console
   const consoles = useEditorStore((state: EditorState) => state.consoles);
@@ -178,6 +236,41 @@ function EditorPage() {
         onMenuClick={() => setShowSidebar(!showSidebar)}
         isMenuOpen={showSidebar}
       />
+
+      {!isVerified && (
+        <StudentLoginModal onVerified={handleStudentVerified} />
+      )}
+
+      {/* Blur Overlay for Fullscreen Lock */}
+      {isVerified && isFullscreenLockActive && !isTestMode() && (
+        <div className="fixed inset-0 z-40 bg-background/50 backdrop-blur-xl flex flex-col items-center justify-center">
+          <div className="bg-card border shadow-2xl rounded-2xl p-8 max-w-sm text-center space-y-6">
+            <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto">
+              <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-red-500"><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+            </div>
+            <div>
+              <h3 className="text-xl font-bold mb-2">Editor Locked</h3>
+              <p className="text-muted-foreground text-sm">Please return to full screen to continue working on your lab session.</p>
+            </div>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={requestFullscreen}
+                className="w-full bg-primary text-primary-foreground font-semibold py-2.5 rounded-lg hover:bg-primary/90 transition-colors"
+              >
+                Return to Full Screen
+              </button>
+              <button
+                onClick={() => {
+                  window.location.href = '/';
+                }}
+                className="w-full bg-secondary text-secondary-foreground font-semibold py-2.5 rounded-lg hover:bg-secondary/80 transition-colors"
+              >
+                Return to Home
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <main ref={containerRef} className="flex-1 flex overflow-hidden min-h-0">
         {/* Sidebar - Mobile (Hamburger) or Desktop (Fixed) */}
