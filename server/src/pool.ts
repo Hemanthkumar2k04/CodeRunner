@@ -254,6 +254,21 @@ class SessionContainerPool {
       // Start the container AFTER it's connected to the network
       await dockerClient.startContainer(containerId);
 
+      // For Postgres, wait for initialization with readiness polling after start.
+      // Must use psql (not pg_isready) to verify the devdb database is actually
+      // created and accepting connections — pg_isready returns OK before init scripts
+      // finish creating the database.
+      if (language === 'sql') {
+        logger.info('Pool', 'Waiting for Postgres to initialize...');
+        await waitForHealthy(
+          containerId,
+          'PGPASSWORD=root psql -U root -d devdb -c "SELECT 1" -t -A 2>&1',
+          30_000,
+          250,
+        );
+        logger.info('Pool', `Postgres ready in ${containerId.substring(0, 12)}`);
+      }
+
       logger.debug('Pool', `Concurrent init for ${containerId.substring(0, 12)} done in ${Date.now() - startTime}ms`);
       return { containerId, networkName };
     })();
@@ -360,24 +375,12 @@ class SessionContainerPool {
         },
         memory,
         cpus: config.docker.cpus,
-        env: language === 'sql' ? ['MYSQL_ROOT_PASSWORD=root'] : undefined,
+        env: language === 'sql' ? ['POSTGRES_PASSWORD=root', 'POSTGRES_USER=root', 'POSTGRES_DB=devdb'] : undefined,
         cmd: language === 'sql' ? undefined : ['tail', '-f', '/dev/null'],
         // NetworkMode will be set manually via network.connect() after creation
       });
 
       logger.info('Pool', `Container created: ${containerId.substring(0, 12)} (${language})`);
-
-      // For MySQL, wait for initialization with readiness polling
-      if (language === 'sql') {
-        logger.info('Pool', 'Waiting for MySQL to initialize...');
-        await waitForHealthy(
-          containerId,
-          'mysqladmin ping -u root -proot --silent',
-          30_000,
-          500,
-        );
-        logger.info('Pool', `MySQL ready in ${containerId.substring(0, 12)}`);
-      }
 
       return containerId;
     } catch (error: any) {

@@ -110,44 +110,87 @@ function saveReport(results, intensity = 'moderate') {
 }
 
 /**
+ * Summarize a single test result (simple or complex)
+ * @param {Object} test - Single test result
+ * @returns {Object} Condensed test summary
+ */
+function summarizeTest(test) {
+    if (!test || test.error) {
+        return { error: test?.error || 'Unknown error' };
+    }
+    return {
+        requests: test.requests || 0,
+        errors: test.errors || 0,
+        timeouts: test.timeouts || 0,
+        successRate: parseFloat(test.successRate || '0'),
+        requestsPerSecond: parseFloat(test.requestsPerSecond || '0'),
+        latency: test.latency ? {
+            mean: Math.round(test.latency.mean || 0),
+            p50: Math.round(test.latency.p50 || 0),
+            p90: Math.round(test.latency.p90 || 0),
+            p95: Math.round(test.latency.p95 || 0),
+            p99: Math.round(test.latency.p99 || 0),
+        } : null,
+        throughputMBps: test.throughput ? parseFloat((test.throughput.mean / 1024 / 1024).toFixed(3)) : 0,
+        program: test.program?.name || null,
+    };
+}
+
+/**
  * Calculate summary metrics from results
  * @param {Object} results - Test results
  * @returns {Object} Summary metrics
  */
 function calculateSummary(results) {
-    const allRequests = [];
+    const latencyMeans = [];
+    const latencyP50s = [];
+    const latencyP95s = [];
+    const latencyP99s = [];
+    const reqsPerSec = [];
     let totalRequests = 0;
     let successfulRequests = 0;
     let failedRequests = 0;
+    let totalErrors = 0;
+    let totalTimeouts = 0;
+    let totalThroughput = 0;
     
+    const perLanguage = {};
+
     // Aggregate across all languages
-    Object.values(results).forEach(langResults => {
-        if (langResults.simple) {
-            const simpleTotal = (langResults.simple.requests || 0) + (langResults.simple.errors || 0) + (langResults.simple.timeouts || 0);
-            totalRequests += simpleTotal;
-            successfulRequests += langResults.simple.requests || 0;
-            failedRequests += (langResults.simple.errors || 0) + (langResults.simple.timeouts || 0);
+    Object.entries(results).forEach(([language, langResults]) => {
+        perLanguage[language] = {
+            simple: summarizeTest(langResults.simple),
+            complex: summarizeTest(langResults.complex),
+        };
+
+        [langResults.simple, langResults.complex].forEach(test => {
+            if (!test || test.error) return;
             
-            if (langResults.simple.latency) {
-                allRequests.push(langResults.simple.latency.mean || 0);
-            }
-        }
-        
-        if (langResults.complex) {
-            const complexTotal = (langResults.complex.requests || 0) + (langResults.complex.errors || 0) + (langResults.complex.timeouts || 0);
-            totalRequests += complexTotal;
-            successfulRequests += langResults.complex.requests || 0;
-            failedRequests += (langResults.complex.errors || 0) + (langResults.complex.timeouts || 0);
+            const testTotal = (test.requests || 0) + (test.errors || 0) + (test.timeouts || 0);
+            totalRequests += testTotal;
+            successfulRequests += test.requests || 0;
+            totalErrors += test.errors || 0;
+            totalTimeouts += test.timeouts || 0;
+            failedRequests += (test.errors || 0) + (test.timeouts || 0);
             
-            if (langResults.complex.latency) {
-                allRequests.push(langResults.complex.latency.mean || 0);
+            if (test.latency) {
+                latencyMeans.push(test.latency.mean || 0);
+                latencyP50s.push(test.latency.p50 || 0);
+                latencyP95s.push(test.latency.p95 || 0);
+                latencyP99s.push(test.latency.p99 || 0);
             }
-        }
+            
+            if (test.requestsPerSecond) {
+                reqsPerSec.push(parseFloat(test.requestsPerSecond));
+            }
+            
+            if (test.throughput) {
+                totalThroughput += test.throughput.total || 0;
+            }
+        });
     });
     
-    const avgResponseTime = allRequests.length > 0
-        ? Math.round(allRequests.reduce((a, b) => a + b, 0) / allRequests.length)
-        : 0;
+    const avg = (arr) => arr.length > 0 ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
     
     const successRate = totalRequests > 0
         ? ((successfulRequests / totalRequests) * 100).toFixed(2)
@@ -157,8 +200,23 @@ function calculateSummary(results) {
         totalRequests,
         successfulRequests,
         failedRequests,
+        totalErrors,
+        totalTimeouts,
         successRate: parseFloat(successRate),
-        avgResponseTime
+        avgResponseTime: avg(latencyMeans),
+        latency: {
+            mean: avg(latencyMeans),
+            p50: avg(latencyP50s),
+            p95: avg(latencyP95s),
+            p99: avg(latencyP99s),
+        },
+        avgRequestsPerSecond: reqsPerSec.length > 0
+            ? parseFloat((reqsPerSec.reduce((a, b) => a + b, 0) / reqsPerSec.length).toFixed(2))
+            : 0,
+        totalThroughputMB: parseFloat((totalThroughput / 1024 / 1024).toFixed(2)),
+        languageCount: Object.keys(results).length,
+        testCount: latencyMeans.length,
+        perLanguage,
     };
 }
 

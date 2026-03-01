@@ -101,7 +101,7 @@ describe('config', () => {
 
         it('should return config for sql', () => {
             const runtime = getRuntimeConfig('sql');
-            expect(runtime.image).toBe('mysql-runtime');
+            expect(runtime.image).toBe('postgres-runtime');
         });
 
         it('should throw for unsupported language', () => {

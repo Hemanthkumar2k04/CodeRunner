@@ -98,7 +98,7 @@ export const config = {
       language: 'java',
     },
     sql: {
-      image: process.env.MYSQL_RUNTIME_IMAGE || 'mysql-runtime',
+      image: process.env.POSTGRES_RUNTIME_IMAGE || 'postgres-runtime',
       language: 'sql',
     },
   },

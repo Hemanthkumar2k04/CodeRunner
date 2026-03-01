@@ -38,7 +38,7 @@ CodeRunner is a distributed code execution platform that safely executes user co
 │  │   │  - JavaScript Runtime Containers            │    │   │
 │  │   │  - Java Runtime Containers                  │    │   │
 │  │   │  - C++ Runtime Containers                   │    │   │
-│  │   │  - MySQL Database Containers                │    │   │
+│  │   │  - PostgreSQL Database Containers             │    │   │
 │  │   └─────────────────────────────────────────────┘    │   │
 │  └──────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
@@ -188,7 +188,7 @@ Container TTL = 60 seconds
 - JavaScript/Node.js
 - Java 11+
 - C++ (g++)
-- MySQL/SQL
+- PostgreSQL/SQL
 
 ### 5. WebSocket Real-Time Communication
 
@@ -225,7 +225,7 @@ Client                          Server
 - Each session gets isolated Docker network
 - Subnet allocation follows pattern `172.25.{session_id}.0/24`
 - Enables socket programming and multi-container communication
-- MySQL containers accessible within same network
+- PostgreSQL containers accessible within same network
 
 **Network Features**:
 
@@ -336,7 +336,7 @@ Client                          Server
 ### Execution
 
 - **Docker** - Container technology
-- **Language Runtimes** - Python, Node.js, Java, C++, MySQL in containers
+- **Language Runtimes** - Python, Node.js, Java, C++, PostgreSQL in containers
 
 ## Error Handling
 
