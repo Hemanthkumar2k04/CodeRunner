@@ -1,18 +1,16 @@
-FROM python:3.12-alpine AS base
+FROM python:3.12-slim AS base
 
-# Install build deps for native packages, install pip packages, then remove build deps
-RUN apk add --no-cache --virtual .build-deps gcc musl-dev g++ \
-    && pip install --no-cache-dir \
+# Install pip packages using prebuilt wheels (no compilation needed)
+RUN pip install --no-cache-dir \
     numpy \
     pandas \
     matplotlib \
     ipykernel \
     pillow \
     scikit-learn \
-    && apk del .build-deps \
     && rm -rf /root/.cache/pip /tmp/*
 
 # Create non-root user
-RUN adduser -D runner
+RUN useradd -m runner
 USER runner
 WORKDIR /app

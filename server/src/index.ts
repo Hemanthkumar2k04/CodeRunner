@@ -22,7 +22,6 @@ import { logger } from './logger';
 
 import { adminMetrics } from './adminMetrics';
 import adminRoutes from './adminRoutes';
-import { initDB, getStudentByRegNo } from './db';
 import { startLoadTest, getTestRunner, stopTest } from './testRunner';
 let getReport: any = null;
 try {
@@ -70,9 +69,6 @@ try {
 } catch (error) {
   logger.error('Server', `Startup cleanup failed: ${error}`);
 }
-
-// Initialize PostgreSQL Database
-initDB();
 
 const execAsync = promisify(exec);
 
@@ -144,25 +140,6 @@ const apiRunLimiter = rateLimit({
   skip: (req) => req.headers['x-load-test'] === 'true',
 });
 app.use('/api/run', apiRunLimiter);
-
-// Student Verification API Endpoint
-app.post('/api/verify-student', async (req, res) => {
-  const { regNo } = req.body;
-  if (!regNo) {
-    return res.status(400).json({ error: 'Register Number is required' });
-  }
-
-  try {
-    const student = await getStudentByRegNo(regNo);
-    if (!student) {
-      return res.status(404).json({ error: 'Student not found. Please check your Register Number.' });
-    }
-    return res.json(student);
-  } catch (error) {
-    logger.error('Database', `Error verifying student: ${error}`);
-    return res.status(500).json({ error: 'Internal server error while verifying student' });
-  }
-});
 
 // Health check endpoint (used by Docker HEALTHCHECK)
 app.get('/api/health', (_req, res) => {
@@ -454,11 +431,6 @@ io.on('connection', (socket) => {
 
   // Track client connection
   adminMetrics.trackClientConnected(socket.id);
-
-  socket.on('student:identity', (data: { regNo: string, name: string }) => {
-    adminMetrics.trackClientIdentity(socket.id, data.regNo, data.name);
-    logger.info('Client', `Client ${socket.id} identified as ${data.name} (${data.regNo})`);
-  });
 
   let currentProcess: any = null;
   let containerId: string | null = null;
@@ -1225,18 +1197,18 @@ if (require.main === module) {
       if (exists) {
         logger.info('Preflight', `${imageName} image found`);
       } else {
-        logger.info('Preflight', `${imageName} image not found. Building...`);
-        try {
-          // Since the backend container mounts the socket and the runtimes folder is mapped to /app/server/runtimes
-          const command = `docker build -t ${imageName} /app/server/runtimes/${imageName.replace('-runtime', '')}/`;
-          logger.info('Preflight', `Running: ${command}`);
-          import('child_process').then(({ execSync }) => {
-            execSync(command, { stdio: 'inherit' });
+        logger.info('Preflight', `${imageName} image not found. Building in background...`);
+        // Use non-blocking exec so the event loop stays free for health checks
+        const command = `docker build -t ${imageName} /app/server/runtimes/${imageName.replace('-runtime', '')}/`;
+        logger.info('Preflight', `Running: ${command}`);
+        exec(command, (error, _stdout, stderr) => {
+          if (error) {
+            logger.error('Preflight', `Failed to build ${imageName}: ${error.message}`);
+          } else {
             logger.info('Preflight', `Successfully built ${imageName}`);
-          });
-        } catch (error: any) {
-             logger.error('Preflight', `Failed to build ${imageName}: ${error.message}`);
-        }
+          }
+          if (stderr) logger.warn('Preflight', `${imageName} build output: ${stderr.slice(0, 500)}`);
+        });
       }
     }
 

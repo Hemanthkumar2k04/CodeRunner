@@ -80,19 +80,11 @@ export const useSocket = () => {
     disconnectSocket();
   }, []);
 
-  const emitIdentity = useCallback((regNo: string, name: string) => {
-    const socket = getSocket();
-    if (socket?.connected) {
-      socket.emit('student:identity', { regNo, name });
-    }
-  }, []);
-
   return {
     runCode,
     sendInput,
     stopCode,
     disconnect,
     isConnected,
-    emitIdentity,
   };
 };

@@ -108,28 +108,6 @@ export function CodeEditor({ onRunClick, onStopClick }: CodeEditorProps) {
       }
     );
 
-    // Block copy/paste at the Monaco instance level
-    editor.onKeyDown((e) => {
-      const isTestMode = () => {
-        try {
-          return localStorage.getItem("test-mode") === "on";
-        } catch {
-          return false;
-        }
-      };
-
-      if (!isTestMode()) {
-        const isCopy = e.ctrlKey && e.keyCode === KeyCode.KeyC;
-        const isPaste = e.ctrlKey && e.keyCode === KeyCode.KeyV;
-        const isCut = e.ctrlKey && e.keyCode === KeyCode.KeyX;
-
-        if (isCopy || isPaste || isCut) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-      }
-    });
-
   }, [activeFile, execLanguage, isRunning, handleRunClick]);
 
   // Cleanup editor reference on unmount
