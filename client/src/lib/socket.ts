@@ -3,15 +3,20 @@ import { useEditorStore } from '@/stores/useEditorStore';
 
 // Dynamically determine server URL:
 // 1. Use VITE_SERVER_URL env var if set
-// 2. Otherwise, use the same hostname as the browser but with port 3000
+// 2. When accessed via port 3000 directly (local dev), connect to that same origin
+// 3. Otherwise (behind Nginx at port 8080+), connect to the same origin — Nginx proxies /socket.io/
 const getServerUrl = (): string => {
   if (import.meta.env.VITE_SERVER_URL) {
     return import.meta.env.VITE_SERVER_URL;
   }
-  // Use the same host the browser is accessing, but with port 3000
-  const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
-  const hostname = window.location.hostname;
-  return `${protocol}//${hostname}:3000`;
+  const { protocol, hostname, port } = window.location;
+  // Local dev: backend is on port 3000, frontend on 5173
+  if (port === '5173' || port === '3000') {
+    const proto = protocol === 'https:' ? 'https:' : 'http:';
+    return `${proto}//${hostname}:3000`;
+  }
+  // Docker / Nginx: connect to same origin (Nginx proxies /socket.io/ → backend)
+  return window.location.origin;
 };
 
 const SERVER_URL = getServerUrl();
@@ -27,10 +32,7 @@ const attachListeners = (sock: Socket) => {
   sock.off('error');
 
   sock.on('output', (data: { sessionId: string; type: 'stdout' | 'stderr'; data: string }) => {
-    console.log('[Socket] Received output:', data);
     const store = useEditorStore.getState();
-    
-    // Find console by sessionId
     const consoleState = Object.values(store.consoles).find(c => c.sessionId === data.sessionId);
     if (consoleState) {
       store.appendOutputToConsole(consoleState.fileId, { type: data.type, data: data.data });
@@ -38,10 +40,7 @@ const attachListeners = (sock: Socket) => {
   });
 
   sock.on('exit', (data: { sessionId: string; code: number; executionTime?: number }) => {
-    console.log('[Socket] Received exit:', data);
     const store = useEditorStore.getState();
-    
-    // Find console by sessionId
     const consoleState = Object.values(store.consoles).find(c => c.sessionId === data.sessionId);
     if (consoleState) {
       store.appendOutputToConsole(consoleState.fileId, {
@@ -49,8 +48,6 @@ const attachListeners = (sock: Socket) => {
         data: `\n[Process exited with code ${data.code}]`,
       });
       store.setConsoleRunning(consoleState.fileId, false);
-      
-      // Set execution time if provided
       if (data.executionTime !== undefined) {
         store.setConsoleExecutionTime(consoleState.fileId, data.executionTime);
       }
@@ -58,9 +55,7 @@ const attachListeners = (sock: Socket) => {
   });
 
   sock.on('error', (data: { sessionId?: string; message: string }) => {
-    console.log('[Socket] Received error:', data);
     const store = useEditorStore.getState();
-    
     if (data.sessionId) {
       const consoleState = Object.values(store.consoles).find(c => c.sessionId === data.sessionId);
       if (consoleState) {
@@ -72,13 +67,6 @@ const attachListeners = (sock: Socket) => {
       }
     }
   });
-
-  // Debug: log all events
-  sock.onAny((event, ...args) => {
-    console.log('[Socket] Event:', event, args);
-  });
-
-  console.log('[Socket] Listeners attached');
 };
 
 export const connectSocket = (): Socket => {

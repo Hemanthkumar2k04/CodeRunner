@@ -24,6 +24,15 @@ interface NetworkStatsResponse {
   timestamp: string;
 }
 
+// Use relative URLs in production (via Nginx), absolute in local dev (Vite on port 5173)
+const getApiBase = (): string => {
+  const { port, hostname, protocol } = window.location;
+  if (port === '5173' || port === '3000') {
+    return `${protocol}//${hostname}:3000`;
+  }
+  return '';
+};
+
 export default function NetworkMonitor() {
   const [stats, setStats] = useState<NetworkStats | null>(null);
   const [lastUpdate, setLastUpdate] = useState<string>('');
@@ -32,7 +41,7 @@ export default function NetworkMonitor() {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/network-stats');
+      const response = await fetch(`${getApiBase()}/api/network-stats`);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }

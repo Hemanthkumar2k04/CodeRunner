@@ -1,20 +1,14 @@
 #!/bin/bash
 #
 # CodeRunner Setup Script
-# -----------------------
-# Sets up the entire CodeRunner environment:
-#   1. Checks prerequisites (Node.js, Docker, npm)
-#   2. Installs dependencies for server and client
-#   3. Builds all Docker runtime images
-#   4. Optionally configures Docker for high concurrency
+# Supports two modes:
+#   1. Docker Compose (production) — single command, fully containerized
+#   2. Local development — installs deps locally, builds runtime images
 #
-# Usage: ./setup.sh [options]
-#
-# Options:
-#   --skip-docker    Skip building Docker images
-#   --skip-deps      Skip installing npm dependencies
-#   --skip-net       Skip network configuration (network config enabled by default)
-#   -h, --help       Show this help message
+# Usage:
+#   ./setup.sh              Local development setup (default)
+#   ./setup.sh --docker     Docker Compose production setup
+#   ./setup.sh --help       Show help
 #
 
 set -e
@@ -27,223 +21,206 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-# Helper for portable logging
-log_info() { printf "${BLUE}[INFO]${NC} %s\n" "$1"; }
-log_success() { printf "${GREEN}[SUCCESS]${NC} %s\n" "$1"; }
-log_warn() { printf "${YELLOW}[WARN]${NC} %s\n" "$1"; }
-log_error() { printf "${RED}[ERROR]${NC} %s\n" "$1"; }
+log_info()    { printf "${BLUE}[INFO]${NC} %s\n" "$1"; }
+log_success() { printf "${GREEN}[✓]${NC} %s\n" "$1"; }
+log_warn()    { printf "${YELLOW}[WARN]${NC} %s\n" "$1"; }
+log_error()   { printf "${RED}[ERROR]${NC} %s\n" "$1"; }
 
-# Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# Load environment variables from .env file if it exists
-if [ -f "${SCRIPT_DIR}/server/.env" ]; then
-    log_info "Loading environment variables from server/.env"
-    set -a  # Export all variables
-    source "${SCRIPT_DIR}/server/.env"
-    set +a  # Stop exporting
-else
-    log_warn "server/.env file not found, using defaults"
-fi
-
-# Ensure helper scripts are executable
-chmod +x "${SCRIPT_DIR}/cleanup.sh" 2>/dev/null || true
-
-# Default options
+MODE="local"
 SKIP_DOCKER=false
 SKIP_DEPS=false
-CONFIGURE_NET=true  # Network config now enabled by default for college deployment
+SKIP_NET=false
 
-# Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --skip-docker)
-            SKIP_DOCKER=true
-            shift
-            ;;
-        --skip-deps)
-            SKIP_DEPS=true
-            shift
-            ;;
-        --configure-net)
-            CONFIGURE_NET=true
-            shift
-            ;;
-        --skip-net)
-            CONFIGURE_NET=false
-            shift
-            ;;
+        --docker)      MODE="docker";    shift ;;
+        --skip-docker) SKIP_DOCKER=true; shift ;;
+        --skip-deps)   SKIP_DEPS=true;   shift ;;
+        --skip-net)    SKIP_NET=true;    shift ;;
         -h|--help)
             echo "CodeRunner Setup Script"
             echo ""
-            echo "Usage: ./setup.sh [options]"
+            echo "Usage: ./scripts/setup.sh [options]"
             echo ""
-            echo "Options:"
-            echo "  --skip-docker    Skip building Docker images"
+            echo "Modes:"
+            echo "  (default)        Local development setup"
+            echo "  --docker         Docker Compose production setup"
+            echo ""
+            echo "Options (local mode only):"
+            echo "  --skip-docker    Skip building runtime images"
             echo "  --skip-deps      Skip installing npm dependencies"
-            echo "  --skip-net       Skip network configuration (default: enabled)"
+            echo "  --skip-net       Skip network configuration"
             echo "  -h, --help       Show this help message"
             exit 0
             ;;
-        *)
-            log_error "Unknown option: $1"
-            exit 1
-            ;;
+        *) log_error "Unknown option: $1"; exit 1 ;;
     esac
 done
 
-# Header
 printf "${CYAN}"
-echo "╔═══════════════════════════════════════════════════════════╗"
-echo "║                  CodeRunner Setup                         ║"
-echo "╚═══════════════════════════════════════════════════════════╝"
+echo "╔════════════════════════════════════════╗"
+echo "║          CodeRunner Setup              ║"
+echo "╚════════════════════════════════════════╝"
 printf "${NC}\n"
 
-# ─────────────────────────────────────────────────────────────────
-# Step 1: Check Prerequisites
-# ─────────────────────────────────────────────────────────────────
-log_info "Step 1/4: Checking prerequisites..."
+# ── Prerequisite checks ──────────────────────────────────────────
 
-# Check Node.js
-if ! command -v node &> /dev/null; then
-    log_error "Node.js is not installed"
-    echo "  Install from: https://nodejs.org/ (v18+ required)"
-    exit 1
+check_docker() {
+    if ! command -v docker &> /dev/null; then
+        log_error "Docker is not installed"
+        echo "  Install from: https://docs.docker.com/get-docker/"
+        exit 1
+    fi
+    if ! docker ps >/dev/null 2>&1; then
+        log_error "Cannot connect to Docker daemon"
+        echo "  1. Is Docker running?"
+        echo "  2. Is your user in the 'docker' group? (sudo usermod -aG docker \$USER)"
+        exit 1
+    fi
+    log_success "Docker $(docker --version | cut -d' ' -f3 | tr -d ',')"
+}
+
+check_node() {
+    if ! command -v node &> /dev/null; then
+        log_error "Node.js is not installed (v18+ required)"
+        exit 1
+    fi
+    local ver=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
+    if [ "$ver" -lt 18 ]; then
+        log_error "Node.js v18+ required (found v$ver)"
+        exit 1
+    fi
+    log_success "Node.js $(node -v)"
+    log_success "npm $(npm -v)"
+}
+
+# ══════════════════════════════════════════════════════════════════
+# Docker Compose Mode
+# ══════════════════════════════════════════════════════════════════
+
+if [ "$MODE" = "docker" ]; then
+    log_info "Mode: Docker Compose (production)"
+    echo ""
+
+    check_docker
+
+    # Check docker compose
+    if ! docker compose version &> /dev/null; then
+        log_error "Docker Compose V2 is required"
+        exit 1
+    fi
+    log_success "Docker Compose $(docker compose version --short)"
+
+    echo ""
+    log_info "Building and starting containers..."
+    cd "$PROJECT_DIR"
+    docker compose up --build -d
+
+    echo ""
+    log_info "Waiting for health checks..."
+    docker compose ps
+
+    printf "\n${GREEN}"
+    echo "╔════════════════════════════════════════╗"
+    echo "║        Setup Complete!                 ║"
+    echo "╚════════════════════════════════════════╝"
+    printf "${NC}\n"
+    echo "Application running at: http://localhost:8080"
+    echo "Admin dashboard:        http://localhost:8080/admin"
+    echo ""
+    echo "Commands:"
+    echo "  docker compose logs -f      Follow logs"
+    echo "  docker compose down         Stop containers"
+    echo "  docker compose up -d        Start containers"
+    echo ""
+    exit 0
 fi
 
-NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
-if [ "$NODE_VERSION" -lt 18 ]; then
-    log_error "Node.js v18+ required (found v$NODE_VERSION)"
-    exit 1
-fi
-log_success "Node.js $(node -v)"
+# ══════════════════════════════════════════════════════════════════
+# Local Development Mode
+# ══════════════════════════════════════════════════════════════════
 
-# Check npm
-if ! command -v npm &> /dev/null; then
-    log_error "npm is not installed"
-    exit 1
-fi
-log_success "npm $(npm -v)"
+log_info "Mode: Local development"
+echo ""
 
-# Check Docker
-if ! command -v docker &> /dev/null; then
-    log_error "Docker is not installed"
-    echo "  Install Docker Desktop or Engine from: https://docs.docker.com/get-docker/"
-    exit 1
-fi
+check_docker
+check_node
 
-# Check Docker Permissions
-if ! docker ps >/dev/null 2>&1; then
-    log_error "Cannot connect to Docker daemon"
-    echo "  Possible reasons:"
-    echo "  1. Docker is not running"
-    echo "  2. Current user is not in 'docker' group (Run: sudo usermod -aG docker \$USER)"
-    exit 1
-fi
-log_success "Docker ($(docker --version | cut -d' ' -f3 | tr -d ','))"
+# ── Install dependencies ─────────────────────────────────────────
 
-# ─────────────────────────────────────────────────────────────────
-# Step 2: Install Dependencies
-# ─────────────────────────────────────────────────────────────────
 if [ "$SKIP_DEPS" = false ]; then
     echo ""
-    log_info "Step 2/4: Installing dependencies..."
-    
-    # Server Dependencies
-    if [ -d "${SCRIPT_DIR}/server" ]; then
-        log_info "Installing server dependencies..."
-        (cd "${SCRIPT_DIR}/server" && npm install)
-    else
-        log_warn "Server directory not found!"
+    log_info "Installing dependencies..."
+
+    if [ -d "${PROJECT_DIR}/server" ]; then
+        log_info "  Server dependencies..."
+        (cd "${PROJECT_DIR}/server" && npm install)
     fi
-    
-    # Client Dependencies
-    if [ -d "${SCRIPT_DIR}/client" ]; then
-        log_info "Installing client dependencies..."
-        (cd "${SCRIPT_DIR}/client" && npm install)
-    else
-        log_warn "Client directory not found!"
+
+    if [ -d "${PROJECT_DIR}/client" ]; then
+        log_info "  Client dependencies..."
+        (cd "${PROJECT_DIR}/client" && npm install)
     fi
 else
-    echo ""
-    log_info "Step 2/4: Skipping dependencies installation"
+    log_info "Skipping dependency installation"
 fi
 
-# ─────────────────────────────────────────────────────────────────
-# Step 3: Build Runtime Images
-# ─────────────────────────────────────────────────────────────────
+# ── Build runtime images ─────────────────────────────────────────
+
 if [ "$SKIP_DOCKER" = false ]; then
     echo ""
-    log_info "Step 3/4: Building runtime images..."
-    
-    RUNTIMES_DIR="${SCRIPT_DIR}/runtimes"
+    log_info "Building runtime images..."
+
+    RUNTIMES_DIR="${PROJECT_DIR}/runtimes"
     if [ -d "$RUNTIMES_DIR" ]; then
         for runtime in "$RUNTIMES_DIR"/*; do
             if [ -d "$runtime" ]; then
                 lang=$(basename "$runtime")
-                image_name="${lang}-runtime"
-                
-                log_info "Building ${image_name}..."
-                if docker build -q -t "$image_name" "$runtime" > /dev/null; then
-                     log_success "Built ${image_name}"
+                log_info "  Building ${lang}-runtime..."
+                if docker build -q -t "${lang}-runtime" "$runtime" > /dev/null; then
+                    log_success "  ${lang}-runtime"
                 else
-                     log_error "Failed to build ${image_name}"
-                     exit 1
+                    log_error "  Failed to build ${lang}-runtime"
+                    exit 1
                 fi
             fi
         done
     else
-        log_warn "Runtimes directory not found at $RUNTIMES_DIR"
+        log_warn "Runtimes directory not found"
     fi
 else
-    echo ""
-    log_info "Step 3/4: Skipping Docker build"
+    log_info "Skipping Docker image builds"
 fi
 
-# ─────────────────────────────────────────────────────────────────
-# Step 4: System Configuration (Optional)
-# ─────────────────────────────────────────────────────────────────
-if [ "$CONFIGURE_NET" = true ]; then
+# ── Network configuration (Linux only) ───────────────────────────
+
+if [ "$SKIP_NET" = false ] && [ "$(uname)" = "Linux" ]; then
     echo ""
-    log_info "Step 4/4: Configuring Network Limits (required for 500+ concurrent sessions)..."
-    
-    # Check for sudo
-    if [ "$EUID" -ne 0 ]; then 
-        log_warn "Root privileges needed to apply sysctl kernel settings."
-        echo "Applying network configuration now (requires your password)..."
-        if [ "$(uname)" == "Linux" ]; then
-            if ! sudo -p "Enter sudo password to apply network configuration: " sysctl -w net.ipv4.ip_local_port_range="1024 65535" net.netfilter.nf_conntrack_max=1048576; then
-                log_error "Failed to apply network configuration"
-                exit 1
-            fi
-            log_success "Network limits updated"
-        else
-            log_warn "Network configuration only supported on Linux"
-        fi
+    log_info "Configuring network limits for high concurrency..."
+    if [ "$EUID" -ne 0 ]; then
+        sudo sysctl -q -w net.ipv4.ip_local_port_range="1024 65535" net.netfilter.nf_conntrack_max=1048576 2>/dev/null && \
+            log_success "Network limits updated" || \
+            log_warn "Could not update network limits (non-critical)"
     else
-        echo "Applying sysctl settings for high concurrency..."
-        if [ "$(uname)" == "Linux" ]; then
-            sysctl -w net.ipv4.ip_local_port_range="1024 65535"
-            sysctl -w net.netfilter.nf_conntrack_max=1048576
-            log_success "Network limits updated"
-        else
-            log_warn "Network configuration only supported on Linux"
-        fi
+        sysctl -q -w net.ipv4.ip_local_port_range="1024 65535" net.netfilter.nf_conntrack_max=1048576
+        log_success "Network limits updated"
     fi
-else
-    echo ""
-    log_info "Step 4/4: Network configuration skipped (use --skip-net=false to enable)"
 fi
 
-echo ""
-printf "${GREEN}"
-echo "╔═══════════════════════════════════════════════════════════╗"
-echo "║             Setup Completed Successfully!                 ║"
-echo "╚═══════════════════════════════════════════════════════════╝"
+# ── Done ─────────────────────────────────────────────────────────
+
+printf "\n${GREEN}"
+echo "╔════════════════════════════════════════╗"
+echo "║        Setup Complete!                 ║"
+echo "╚════════════════════════════════════════╝"
 printf "${NC}\n"
-echo "To start the development server:"
-echo "  cd server && npm run dev"
+echo "Start the application:"
+echo "  Terminal 1:  cd server && npm run dev"
+echo "  Terminal 2:  cd client && npm run dev"
 echo ""
-echo "To start the client:"
-echo "  cd client && npm run dev"
+echo "Frontend:  http://localhost:5173"
+echo "Backend:   http://localhost:3000"
 echo ""

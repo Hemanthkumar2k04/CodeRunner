@@ -11,6 +11,10 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
+
+
 # Default intensity
 INTENSITY="${1:-moderate}"
 
@@ -36,23 +40,28 @@ if [[ ! "$INTENSITY" =~ ^(light|moderate|heavy)$ ]]; then
     exit 1
 fi
 
-# Check if server is running
-echo -e "${YELLOW}Checking if server is running on port 3000...${NC}"
-if ! curl -s -f http://localhost:3000/health > /dev/null 2>&1; then
-    echo -e "${RED}✗ Server is not running on port 3000${NC}"
-    echo "Please start the server first:"
-    echo "  cd server && npm run dev"
-    exit 1
+# Check if server is running (check 3000 for local dev, 8080 for docker)
+echo -e "${YELLOW}Checking server health...${NC}"
+SERVER_URL="http://localhost:3000"
+if ! curl -s -f "${SERVER_URL}/api/health" > /dev/null 2>&1; then
+    SERVER_URL="http://localhost:8080"
+    if ! curl -s -f "${SERVER_URL}/api/health" > /dev/null 2>&1; then
+        echo -e "${RED}✗ Server is not running on port 3000 or 8080${NC}"
+        echo "Please start the server first:"
+        echo "  ./setup.sh --docker  (for Docker)"
+        echo "  cd server && npm run dev  (for local)"
+        exit 1
+    fi
 fi
 
-echo -e "${GREEN}✓ Server is running${NC}"
+echo -e "${GREEN}✓ Server is healthy at ${SERVER_URL}${NC}"
 echo ""
 
 # Check if autocannon is installed
 if ! node -e "require('autocannon')" 2> /dev/null; then
     echo -e "${YELLOW}Installing autocannon...${NC}"
-    cd server && npm install autocannon
-    cd ..
+    cd ../server && npm install autocannon
+    cd ../scripts
 fi
 
 # Run the tests
@@ -63,9 +72,9 @@ fi
 echo ""
 
 if [ -n "$LANGUAGES" ]; then
-    node server/tests/run-tests.js "$INTENSITY" "--languages=$LANGUAGES"
+    node ../server/tests/run-tests.js "$INTENSITY" "--server=${SERVER_URL}" "--languages=$LANGUAGES"
 else
-    node server/tests/run-tests.js "$INTENSITY"
+    node ../server/tests/run-tests.js "$INTENSITY" "--server=${SERVER_URL}"
 fi
 
 exit_code=$?

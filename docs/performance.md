@@ -1,11 +1,15 @@
 # Performance Metrics
 
+Historical benchmarks captured during initial system validation.
+
 ## Hardware Specifications
 Hardware - 1:
 CPU - 12 cores (13th Gen Intel(R) Core(TM) i5-13420H)
 RAM - 4.9 GB usable / 15.3 GB total
 
 ## Execution Times
+
+*Captured using `autocannon` load tester with warm container reuse enabled.*
 
 | Language | Simple Execution | Complex Execution |
 | :--- | :--- | :--- |

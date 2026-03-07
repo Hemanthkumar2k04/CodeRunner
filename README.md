@@ -5,119 +5,139 @@
 
 # CodeRunner
 
-A web-based code execution platform built for educational lab environments. Write, run, and test code directly in your browser without installing compilers or runtimes.
+A web-based code execution platform built for educational lab environments. Write, run, and test code directly in your browser — no compilers or runtimes to install.
 
 ## Features
 
-- **Browser-Based IDE**: Full-featured code editor with syntax highlighting and IntelliSense
-- **Zero Setup**: No installation needed—code runs instantly in isolated Docker containers
-- **Multi-Language Support**: Python, Python Notebook, JavaScript, C++, Java, and SQL
-- **Real-Time Output**: Stream execution results via WebSocket with performance metrics
-- **File Management**: Create and organize multi-file projects with full dependency support
-- **Smart Execution**: Priority-based task queue with concurrent execution and automatic cleanup
-- **Network Capable**: Build networking and multi-file projects with container networking support
-- **Session Isolation**: Temporary workspaces with automatic cleanup on disconnect
+- **Browser IDE** — Monaco editor with syntax highlighting and IntelliSense
+- **Multi-Language** — Python, JavaScript, C/C++, Java, SQL, Python Notebooks
+- **Real-Time** — WebSocket streaming of output with performance metrics
+- **Isolated Execution** — every run happens in a fresh Docker container
+- **Admin Dashboard** — live metrics, logs, load testing at `/admin`
 
 ## Quick Start
 
 ### Prerequisites
 
-- Node.js v18+
-- Docker
-- npm
+- [Docker](https://docs.docker.com/get-docker/) (with Compose V2)
+- [Node.js](https://nodejs.org/) v18+ *(local dev only)*
 
-### Setup
+---
 
-1. **Clone the repository:**
+### Docker Compose (recommended)
 
-   ```bash
-   git clone <repo-url>
-   cd CodeRunner
-   ```
-
-2. **Run setup script:**
-
-   ```bash
-   ./setup.sh
-   ```
-
-   This builds Docker runtime images and installs dependencies.
-
-3. **Start the application:**
-
-   ```bash
-   # Terminal 1 - Backend
-   cd server && npm run dev
-
-   # Terminal 2 - Frontend
-   cd client && npm run dev
-   ```
-
-The frontend will be available at `http://localhost:5173`.
-
-## Quick Commands
+One command to build and run everything:
 
 ```bash
-# Run all tests
-./run-tests.sh
-
-# Build for production
-npm run build
-
-# Clean up temporary files
-./cleanup.sh
+./setup.sh --docker
 ```
 
-## Architecture
+The app will be available at **http://localhost:8080**.
 
-CodeRunner uses a **queue-based execution system** with Docker containers for each language runtime. Requests are prioritized and executed concurrently with automatic resource management.
+Or manually:
 
-For detailed architecture information, visit `docs/architecture.md`.
+```bash
+docker compose up --build -d
+```
+
+| Command | Description |
+|---|---|
+| `docker compose up -d` | Start containers |
+| `docker compose down` | Stop containers |
+| `docker compose logs -f` | Follow logs |
+| `docker compose up --build -d` | Rebuild and start |
+
+---
+
+### Local Development
+
+```bash
+# 1. Install deps and build runtime images
+./setup.sh
+
+# 2. Start backend (terminal 1)
+cd server && npm run dev
+
+# 3. Start frontend (terminal 2)
+cd client && npm run dev
+```
+
+Frontend at `http://localhost:5173`, backend at `http://localhost:3000`.
+
+## Project Structure
+
+```
+CodeRunner/
+├── client/              # React + Vite frontend
+│   └── nginx.conf       # Nginx reverse proxy config
+├── server/              # Express + TypeScript backend
+│   └── src/             # Server source code
+├── runtimes/            # Docker images for each language
+├── scripts/             # Utility scripts
+│   ├── cleanup.sh       # Remove orphaned containers/networks
+│   ├── run-tests.sh     # Run all test suites
+│   ├── run-load-tests.sh
+│   └── setup.ps1        # Windows setup script
+├── docs/                # Architecture & testing docs
+├── docker-compose.yml   # Production deployment
+├── server.Dockerfile    # Backend container
+├── client.Dockerfile    # Frontend container
+└── setup.sh             # Setup script
+```
+
+## Admin Dashboard
+
+Access at **http://localhost:8080/admin** (requires admin key).
+
+### Security Configuration
+
+IMPORTANT: Before pushing to production, you **must** change the default admin key. Secure it using an environment variable or by editing the `docker-compose.yml` file.
+
+**Option A: Environment Variable (Recommended)**
+Create a `.env` file in the root or set it in your shell:
+```bash
+ADMIN_KEY=your_very_secure_secret_key
+```
+
+**Option B: Docker Compose**
+Edit the `environment` section in `docker-compose.yml`:
+```yaml
+services:
+  backend:
+    environment:
+      - ADMIN_KEY=your_very_secure_secret_key
+```
+
+Default key: `development_key`
+Authenticate via the `X-Admin-Key` header (handled by the dashboard UI).
 
 ## Testing
 
-CodeRunner includes unit tests, integration tests, and performance load testing. Run tests with:
-
 ```bash
-cd server && npm test          # Unit & integration tests
-cd client && npm run test:run  # Frontend tests
-./run-tests.sh                 # All tests
+# Unit & integration tests
+cd server && npm test
+cd client && npm run test:run
+
+# All tests
+./scripts/run-tests.sh
+
+# Load tests (from admin dashboard or CLI)
+./scripts/run-load-tests.sh light
 ```
 
-For detailed testing information, visit `docs/testing.md`.
+## Tech Stack
 
-## Technology Stack
-
-- **Frontend**: React, TypeScript, Vite, Monaco Editor
-- **Backend**: Node.js, Express, TypeScript
-- **Execution**: Docker, Queue System, Container Pools
-- **Real-Time**: WebSocket (Socket.IO)
-- **Testing**: Jest, Vitest, Java Load Tester
+| Layer | Technology |
+|---|---|
+| Frontend | React, TypeScript, Vite, Monaco Editor |
+| Backend | Node.js, Express, TypeScript, Socket.IO |
+| Execution | Docker containers, queue system, container pools |
+| Proxy | Nginx (gzip, caching, WebSocket) |
 
 ## Contributing
 
-We welcome contributions from the community! CodeRunner is open source and we'd love your help making it better.
-
-### How to Contribute
-
-1. **Fork the repository** and create your feature branch
-2. **Read our [Contributing Guide](CONTRIBUTING.md)** for detailed instructions
-3. **Follow our [Code of Conduct](CODE_OF_CONDUCT.md)** in all interactions
-4. **Submit a Pull Request** with your changes
-
-### Ways to Contribute
-
-- 🐛 Report bugs and issues
-- 💡 Suggest new features
-- 📝 Improve documentation
-- 🧪 Add or improve tests
-- 🔧 Fix bugs or implement features
-- 🎨 Enhance UI/UX
-
-Check out our [open issues](https://github.com/OWNER/CodeRunner/issues) to find tasks labeled `good first issue` for newcomers.
-
-For detailed guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT — see [LICENSE](LICENSE).

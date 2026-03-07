@@ -36,7 +36,7 @@ __pycache__/
 
 reports/
 
-# Compiled files
+# Compiled binaries
 *.class
 *.o
 *.obj
@@ -45,14 +45,6 @@ reports/
 *.so
 *.dylib
 *.jar
-!load-tester*.jar
-
-# Java build artifacts
-target/
-*.war
-*.ear
-*.nar
-hs_err_pid*
 
 # C/C++ build artifacts
 *.out

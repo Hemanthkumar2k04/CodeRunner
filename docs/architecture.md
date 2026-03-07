@@ -62,7 +62,9 @@ CodeRunner is a distributed code execution platform that safely executes user co
 - Handle user interactions for code execution
 - Display real-time execution output via WebSocket
 - Support multi-console tabs for different file executions
-- Provide admin dashboard for system metrics and monitoring
+- Provide admin dashboard for system metrics and monitoring at `/admin`
+- Port 8080: Main entrance (via Nginx reverse proxy)
+- Port 5173: Local development frontend (Vite)
 
 **Key Files**:
 
@@ -76,9 +78,9 @@ CodeRunner is a distributed code execution platform that safely executes user co
 
 **Recent Enhancements (Feb 2026)**:
 
-- Removed HomePage and LabPage components, routing now defaults to `/editor`
-- Implemented collapsible sidebar for better mobile/small screen experience
-- Admin dashboard enhanced with real-time system metrics (CPU, memory, uptime)
+- Added `/api/health` endpoint for Docker health checks and orchestration
+- Enhanced admin dashboard with real-time system metrics (CPU, memory, uptime)
+- Unified admin key authentication via `X-Admin-Key` header
 
 ### 2. Backend Server
 
@@ -142,6 +144,12 @@ interface QueuedTask {
 6. On completion, metrics are recorded and next task is processed
 
 **Key Optimization**: Tasks are executed without `await`, allowing true parallel execution without blocking the event loop.
+
+### 4. Health Checks
+
+**Location**: `server/src/index.ts` -> `/api/health`
+
+Used by Docker Compose for service orchestration and by monitoring tools to verify backend readiness. Returns status and server uptime.
 
 ### 4. Container Pool Management
 
@@ -370,12 +378,15 @@ All errors are streamed to client via WebSocket with descriptive messages.
 - Concurrency limits prevent resource exhaustion
 - Container TTL ensures cleanup
 - WebSocket authentication via session tokens
-
 ### Authentication & Authorization
 
-- **Admin routes** now require `X-Admin-Key` header instead of query parameters
-- Admin key validation in production prevents unauthorized access
-- Improved error handling for missing/invalid ADMIN_KEY
+- **Admin routes** require the `X-Admin-Key` header for validation.
+- In production, the key **must** be set via the `ADMIN_KEY` environment variable in your `docker-compose.yml` or shell environment.
+- Accessing `/admin` routes without a valid key will result in a 401 Unauthorized response.
+- The dashboard UI handles header injection automatically once the key is entered.
+
+> [!IMPORTANT]
+> Change the default `development_key` before publishing. You can set this directly in the `docker-compose.yml` file under the `backend` service environment variables.
 
 ### Input Validation & Sanitization
 
@@ -430,10 +441,11 @@ interface AdminMetrics {
 **Recent Enhancements (Feb 2026)**:
 
 - Added SystemMetrics interface with CPU, memory, and uptime tracking
+- Added `/api/health` endpoint for readiness probes
 - Implemented resource history tracking for visual representation
 - Added latency cap to AdminMetricsService to prevent unbounded memory growth
 - Enhanced admin dashboard with real-time metrics visualization
-- Improved metrics retrieval performance with optimized data structures
+- Unified load testing with `autocannon` replacing legacy Java-based tools
 
 ## Recent Improvements (February 2026)
 

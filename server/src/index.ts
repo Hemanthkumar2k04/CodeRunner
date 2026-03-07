@@ -24,7 +24,12 @@ import { adminMetrics } from './adminMetrics';
 import adminRoutes from './adminRoutes';
 import { initDB, getStudentByRegNo } from './db';
 import { startLoadTest, getTestRunner, stopTest } from './testRunner';
-const { getReport } = require('../tests/utils/report-manager');
+let getReport: any = null;
+try {
+  getReport = require('../tests/utils/report-manager').getReport;
+} catch (err) {
+  // Ignored in production as tests/ folder is not shipped
+}
 
 // Re-read environment variables into config after dotenv load
 (config.docker as any).memory = process.env.DOCKER_MEMORY || '512m';
@@ -157,6 +162,11 @@ app.post('/api/verify-student', async (req, res) => {
     logger.error('Database', `Error verifying student: ${error}`);
     return res.status(500).json({ error: 'Internal server error while verifying student' });
   }
+});
+
+// Health check endpoint (used by Docker HEALTHCHECK)
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', uptime: process.uptime() });
 });
 
 // Admin routes - protected by key authentication
@@ -1215,8 +1225,18 @@ if (require.main === module) {
       if (exists) {
         logger.info('Preflight', `${imageName} image found`);
       } else {
-        logger.error('Preflight', `${imageName} image not found`);
-        logger.error('Preflight', `Run: docker build -t ${imageName} runtimes/${imageName.replace('-runtime', '')}/`);
+        logger.info('Preflight', `${imageName} image not found. Building...`);
+        try {
+          // Since the backend container mounts the socket and the runtimes folder is mapped to /app/server/runtimes
+          const command = `docker build -t ${imageName} /app/server/runtimes/${imageName.replace('-runtime', '')}/`;
+          logger.info('Preflight', `Running: ${command}`);
+          import('child_process').then(({ execSync }) => {
+            execSync(command, { stdio: 'inherit' });
+            logger.info('Preflight', `Successfully built ${imageName}`);
+          });
+        } catch (error: any) {
+             logger.error('Preflight', `Failed to build ${imageName}: ${error.message}`);
+        }
       }
     }
 

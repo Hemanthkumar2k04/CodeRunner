@@ -31,7 +31,7 @@ Complete testing guide for CodeRunner, covering unit tests, integration tests, a
 ### Run All Tests
 
 ```bash
-./run-tests.sh
+./scripts/run-tests.sh
 ```
 
 This runs unit tests, integration tests, and basic validation across the entire project.
@@ -55,8 +55,7 @@ npm run test:run
 **Performance Load Testing**:
 
 ```bash
-cd server/tests/load-test-java
-./run-load-test.sh
+./scripts/run-load-tests.sh
 ```
 
 ## Server Tests
@@ -164,150 +163,40 @@ npm run test
 
 ## Performance Load Testing
 
-### Overview
-
-High-performance concurrent load testing built with Java 11. Simulates multiple users executing code concurrently to verify system capacity and identify bottlenecks.
-
-**Location**: `server/tests/load-test-java/`
-
-### Why Load Test?
-
-Load testing answers critical questions:
-
-1. **Capacity**: How many concurrent users can the system handle?
-2. **Response times**: What are P50, P95, P99 latencies?
-3. **Stability**: Does performance degrade under sustained load?
-4. **Bottlenecks**: Which component is the limiting factor?
-5. **Resource usage**: CPU, memory, container utilization under load
-
 ### Quick Start
 
 ```bash
-cd server/tests/load-test-java
-./run-load-test.sh
+./scripts/run-load-tests.sh [light|moderate|heavy]
 ```
 
-This runs the default load test:
+This runs the load test using `autocannon`:
 
-- **Users**: 60 concurrent
-- **Ramp time**: 30 seconds (gradual ramp-up)
-- **Duration**: 60 seconds
-- **Scenarios**: All languages
+- **Light**: 10 concurrent connections, 30s
+- **Moderate**: 50 concurrent connections, 60s
+- **Heavy**: 100 concurrent connections, 90s
 
-### Custom Load Test
+### Manual Execution
 
-First compile (if not done recently):
-
-```bash
-cd server/tests/load-test-java
-mvn clean package
-```
-
-Then run with custom parameters:
+You can run the underlying test runner directly:
 
 ```bash
-java -jar target/load-tester-1.0.0-jar-with-dependencies.jar \
-  --users 100 \
-  --ramp-time 20 \
-  --duration 120 \
-  --concurrent 50
+node server/tests/run-tests.js [intensity]
 ```
 
 ### Parameters
 
-- `--users` (default: 60): Total simulated users
-- `--ramp-time` (default: 30): Ramp-up period in seconds (gradual load increase)
-- `--duration` (default: 60): Total test duration in seconds
-- `--concurrent` (default: 30): Maximum concurrent users at peak
+- `intensity`: one of `light`, `moderate`, `heavy` (default: `moderate`)
+- `--languages=...`: comma-separated list of languages to test (e.g. `python,javascript`)
 
-### Test Scenarios
-
-The load tester runs multiple language scenarios:
-
-**Python**
-
-- Hello World
-- Loops and iterations
-
-**JavaScript**
-
-- Hello World
-- Loops and iterations
-
-**Java**
-
-- Hello World
-- ArrayList operations
-
-**SQL**
-
-- Basic queries
-- Data operations
+The load tester runs multiple language scenarios including Python, JavaScript, Java, C++, and SQL.
 
 ### Interpreting Results
 
-**HTML Report**: Generated in `reports/` directory
-
-- Visual charts for response times
-- Success/failure breakdown
-- Throughput metrics
-- Detailed request logs
-
-**Report Metrics**:
-
-```
-Total Requests:     500
-Success Rate:       98%
-Failed:             10
-
-Response Times:
-  Min:              105ms
-  Max:              2,500ms
-  Avg/Mean:         450ms
-  P50 (Median):     350ms
-  P95:              800ms
-  P99:              1,500ms
-
-Requests/Second:    8.3
-```
-
-### Performance Targets
-
-Recommended targets for production:
-
-- **Success rate**: ≥95% (some timeouts acceptable)
-- **P95 latency**: <1,000ms
-- **P99 latency**: <2,000ms
-- **Throughput**: >5 req/sec per concurrent user
-
-### Load Test Examples
-
-#### Light Load (10 users)
-
-```bash
-java -jar target/load-tester-1.0.0-jar-with-dependencies.jar \
-  --users 10 --ramp-time 5 --duration 30 --concurrent 5
-```
-
-Tests basic functionality and baseline performance.
-
-#### Moderate Load (50 users)
-
-```bash
-java -jar target/load-tester-1.0.0-jar-with-dependencies.jar \
-  --users 50 --ramp-time 15 --duration 60 --concurrent 25
-```
-
-Realistic production-like load.
-
-#### Stress Test (100+ users)
-
-```bash
-java -jar target/load-tester-1.0.0-jar-with-dependencies.jar \
-  --users 150 --ramp-time 30 --duration 120 --concurrent 75
-```
-
-Identifies breaking points and resource limits.
+Results are printed directly to the console with:
+- Throughput (Requests/sec)
+- Latency (P50, P95, P99)
+- Error rate
+- Detailed tables per endpoint
 
 ### Performance Optimization Tips
 
@@ -337,20 +226,12 @@ If load test results are poor:
 
 ### Batch Load Testing
 
-Run multiple load tests with different parameters:
+Run multiple load tests using the intensity flag:
 
 ```bash
-#!/bin/bash
-cd server/tests/load-test-java
-
-echo "Light load test..."
-java -jar target/load-tester-1.0.0-jar-with-dependencies.jar --users 10 --duration 30
-
-echo "Moderate load test..."
-java -jar target/load-tester-1.0.0-jar-with-dependencies.jar --users 50 --duration 60
-
-echo "Heavy load test..."
-java -jar target/load-tester-1.0.0-jar-with-dependencies.jar --users 100 --duration 120
+./scripts/run-load-tests.sh light
+./scripts/run-load-tests.sh moderate
+./scripts/run-load-tests.sh heavy
 ```
 
 ## Continuous Testing Strategy
@@ -367,14 +248,13 @@ cd client && npm run test:run
 Run moderate load test to catch performance degradation:
 
 ```bash
-cd server/tests/load-test-java
-./run-load-test.sh
+./scripts/run-load-tests.sh moderate
 ```
 
 ### Before Release
 
-1. Run full test suite: `./run-tests.sh`
-2. Run stress test (100+ users)
+1. Run full test suite: `./scripts/run-tests.sh`
+2. Run stress test (heavy intensity)
 3. Review performance metrics
 4. Verify no regressions from previous versions
 
@@ -405,26 +285,22 @@ lsof -i :3000
 kill -9 <PID>
 ```
 
-### Load Test Failing
-
-**Issue**: Java version mismatch
-
-```bash
-java -version  # Should be 11 or higher
-# Install if needed: sudo apt-get install openjdk-11-jdk
-```
+### Load Test failing
 
 **Issue**: Server not responding
 
 ```bash
 # Ensure backend is running
+# Docker:
+./setup.sh --docker
+# Local:
 cd server && npm run dev
 ```
 
 **Issue**: Low success rate (<90%)
 
 - Server may be overloaded
-- Reduce `--users` or `--concurrent` parameters
+- Reduce intensity to `light`
 - Check logs for errors
 - Increase `MAX_CONCURRENT_SESSIONS` and restart
 

@@ -1,0 +1,61 @@
+# Dependencies
+**/node_modules
+/package-lock.json
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Git & GitHub
+.git/
+.github/
+.gitignore
+
+# Environment
+.env
+.env.*
+
+# IDE / Editor
+.vscode/
+.idea/
+.devcontainer/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dockerfiles (not needed inside the build context)
+*.Dockerfile
+docker-compose.yml
+
+# Logs & artifacts
+*.log
+coverage/
+.nyc_output/
+
+# Documentation (not needed in images)
+docs/
+*.md
+LICENSE
+
+# Scripts not needed in containers (except cleanup.sh — referenced via explicit COPY)
+setup.sh
+scripts/setup.ps1
+scripts/run-tests.sh
+scripts/run-load-tests.sh
+
+# Test reports (large JSON files)
+server/tests/reports/
+
+# Compiled binaries
+*.class
+*.o
+*.obj
+*.exe
+*.so
+*.dylib
+*.jar
+*.out

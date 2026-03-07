@@ -20,23 +20,23 @@ echo -e "${BLUE}========================================${NC}"
 echo ""
 
 # Check if node_modules exist
-if [ ! -d "server/node_modules" ]; then
+if [ ! -d "../server/node_modules" ]; then
     echo -e "${YELLOW}Installing server dependencies...${NC}"
-    cd server
+    cd ../server
     npm install
-    cd ..
+    cd ../scripts
 fi
 
-if [ ! -d "client/node_modules" ]; then
+if [ ! -d "../client/node_modules" ]; then
     echo -e "${YELLOW}Installing client dependencies...${NC}"
-    cd client
+    cd ../client
     npm install
-    cd ..
+    cd ../scripts
 fi
 
 # Server Tests
 echo -e "${BLUE}Running Server Tests (Jest)...${NC}"
-cd server
+cd ../server
 if npm test 2>&1; then
     echo -e "${GREEN}✓ Server tests passed${NC}"
     SERVER_PASS=true
@@ -44,13 +44,13 @@ else
     echo -e "${RED}✗ Server tests failed${NC}"
     SERVER_PASS=false
 fi
-cd ..
+cd ../scripts
 
 echo ""
 
 # Client Tests
 echo -e "${BLUE}Running Client Tests (Vitest)...${NC}"
-cd client
+cd ../client
 if npm run test:run 2>&1; then
     echo -e "${GREEN}✓ Client tests passed${NC}"
     CLIENT_PASS=true
@@ -58,7 +58,7 @@ else
     echo -e "${RED}✗ Client tests failed${NC}"
     CLIENT_PASS=false
 fi
-cd ..
+cd ../scripts
 
 echo ""
 echo -e "${BLUE}========================================${NC}"
@@ -69,7 +69,7 @@ if [ "$SERVER_PASS" = true ] && [ "$CLIENT_PASS" = true ]; then
     echo -e "${GREEN}✓ All tests passed!${NC}"
     echo ""
     echo -e "${YELLOW}Additional Testing:${NC}"
-    echo "  Load tests: cd server/tests/load-test-java && ./run-load-test.sh"
+    echo "  Load tests: ./scripts/run-load-tests.sh"
     echo "  Documentation: docs/testing.md"
     exit 0
 else
