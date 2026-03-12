@@ -14,7 +14,7 @@ services:
       # Mount the runtimes directory so the backend can build language images on startup
       - ./runtimes:/app/server/runtimes
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:3100/api/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      test: [ "CMD", "node", "-e", "fetch('http://localhost:3100/api/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))" ]
       interval: 15s
       timeout: 5s
       retries: 5
