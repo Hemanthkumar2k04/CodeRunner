@@ -4,6 +4,7 @@ import { logger } from './logger';
 import { getOrCreateSessionNetwork } from './networkManager';
 import {
   createContainer as dockerCreateContainer,
+  startContainer,
   execInteractive,
   putFiles,
   removeContainers,
@@ -285,7 +286,10 @@ class KernelManager {
       networkName,
       memory: config.docker.memorySQL,  // More memory for notebook kernels
       cpus: config.docker.cpusNotebook,  // More CPU for notebook kernels
+      cmd: ['tail', '-f', '/dev/null'],
     });
+
+    await startContainer(containerId);
 
     logger.info('KernelManager', `Created kernel container ${containerId.substring(0, 12)}`);
     return containerId;

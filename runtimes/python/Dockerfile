@@ -8,6 +8,8 @@ RUN pip install --no-cache-dir \
     ipykernel \
     pillow \
     scikit-learn \
+    scipy \
+    seaborn \
     && rm -rf /root/.cache/pip /tmp/*
 
 # Create non-root user
