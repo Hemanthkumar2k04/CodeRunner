@@ -1,4 +1,4 @@
-import { Moon, Sun, AlertTriangle } from "lucide-react"
+import { Moon, Sun, AlertTriangle, Github } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useTheme } from "./theme-provider"
 import codeRunnerLogo from "../assets/CodeRunner.webp"
@@ -67,6 +67,17 @@ export function Navbar() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+
+          {/* GitHub Link */}
+          <a
+            href="https://github.com/Hemanthkumar2k04/CodeRunner"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center rounded-lg text-sm font-medium transition-all hover:bg-accent hover:text-accent-foreground h-10 w-10 hover:scale-105 active:scale-95"
+            aria-label="GitHub Repository"
+          >
+            <Github className="h-5 w-5" />
+          </a>
 
           {/* Theme Toggle */}
           <button
