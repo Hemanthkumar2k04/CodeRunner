@@ -27,7 +27,7 @@ log_warn()    { printf "${YELLOW}[WARN]${NC} %s\n" "$1"; }
 log_error()   { printf "${RED}[ERROR]${NC} %s\n" "$1"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PROJECT_DIR="$SCRIPT_DIR"
 
 MODE="local"
 SKIP_DOCKER=false
