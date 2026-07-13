@@ -182,6 +182,53 @@ class SessionContainerPool {
   }
 
   /**
+   * Try to acquire an existing reusable container for a session+language.
+   * Validates that the container still exists (and starts it if stopped)
+   * before returning it to avoid stale-ID reuse.
+   */
+  private async tryAcquireReusableContainer(sessionId: string, language: string): Promise<string | null> {
+    const sessionContainers = this.pool.get(sessionId) || [];
+
+    for (let i = 0; i < sessionContainers.length; i++) {
+      const candidate = sessionContainers[i];
+      if (candidate.language !== language || candidate.inUse) {
+        continue;
+      }
+
+      try {
+        const info = await dockerClient.docker.getContainer(candidate.containerId).inspect();
+        if (!info.State?.Running) {
+          await startContainer(candidate.containerId);
+        }
+
+        candidate.inUse = true;
+        candidate.lastUsed = Date.now();
+        this.metrics.containersReused++;
+        logger.debug('Pool', `Reusing container for ${sessionId}:${language} - ${candidate.containerId.substring(0, 12)}`);
+        return candidate.containerId;
+      } catch (error: any) {
+        // Container no longer exists — remove stale ID from pool and continue.
+        if (error?.statusCode === 404) {
+          logger.warn('Pool', `Pruning stale container ${candidate.containerId.substring(0, 12)} for ${sessionId}:${language}`);
+          sessionContainers.splice(i, 1);
+          i--;
+
+          if (sessionContainers.length > 0) {
+            this.pool.set(sessionId, sessionContainers);
+          } else {
+            this.pool.delete(sessionId);
+          }
+          continue;
+        }
+
+        logger.warn('Pool', `Failed validating reusable container ${candidate.containerId.substring(0, 12)}: ${error?.message || error}`);
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Get or create a container for the session and language
    * Reuses existing containers within the same session or creates new ones.
    * Uses a promise-based mutex to prevent race conditions when multiple
@@ -198,17 +245,9 @@ class SessionContainerPool {
     }
 
     // Check if session has an available container (fast path, no mutex needed)
-    const sessionContainers = this.pool.get(sessionId) || [];
-    const existingContainer = sessionContainers.find(
-      c => c.language === language && !c.inUse
-    );
-
-    if (existingContainer) {
-      existingContainer.inUse = true;
-      existingContainer.lastUsed = Date.now();
-      this.metrics.containersReused++;
-      logger.debug('Pool', `Reusing container for ${sessionId}:${language} - ${existingContainer.containerId.substring(0, 12)}`);
-      return existingContainer.containerId;
+    const existingContainerId = await this.tryAcquireReusableContainer(sessionId, language);
+    if (existingContainerId) {
+      return existingContainerId;
     }
 
     // No available container — use mutex to prevent duplicate creation
@@ -220,16 +259,10 @@ class SessionContainerPool {
       logger.debug('Pool', `Waiting for pending container acquisition: ${mutexKey}`);
       await pendingPromise;
       // Re-check after the pending creation completes
-      const updatedContainers = this.pool.get(sessionId) || [];
-      const nowAvailable = updatedContainers.find(
-        c => c.language === language && !c.inUse
-      );
-      if (nowAvailable) {
-        nowAvailable.inUse = true;
-        nowAvailable.lastUsed = Date.now();
-        this.metrics.containersReused++;
-        logger.debug('Pool', `Reusing container after mutex wait for ${sessionId}:${language} - ${nowAvailable.containerId.substring(0, 12)}`);
-        return nowAvailable.containerId;
+      const nowAvailableId = await this.tryAcquireReusableContainer(sessionId, language);
+      if (nowAvailableId) {
+        logger.debug('Pool', `Reusing container after mutex wait for ${sessionId}:${language} - ${nowAvailableId.substring(0, 12)}`);
+        return nowAvailableId;
       }
     }
 
@@ -364,7 +397,11 @@ class SessionContainerPool {
     const runtimeConfig = config.runtimes[language as keyof typeof config.runtimes];
 
     try {
-      const memory = language === 'sql' ? config.docker.memorySQL : config.docker.memory;
+      const memory = language === 'sql'
+        ? config.docker.memorySQL
+        : language === 'python'
+          ? config.docker.memoryPython
+          : config.docker.memory;
 
       const containerId = await dockerClient.createContainer({
         image: runtimeConfig.image,

@@ -19,6 +19,7 @@ export const config = {
   docker: {
     // Resource limits per container
     memory: process.env.DOCKER_MEMORY || '512m',
+    memoryPython: process.env.DOCKER_MEMORY_PYTHON || '2048m', // Python workloads (numpy/pandas) can exceed generic cap
     memorySQL: process.env.DOCKER_MEMORY_SQL || '1024m', // SQL containers need more memory
     cpus: process.env.DOCKER_CPUS || '0.5',
     cpusNotebook: process.env.DOCKER_CPUS_NOTEBOOK || '1', // Notebook kernels get more CPU

@@ -16,7 +16,7 @@ import { sessionPool } from './pool';
 import { config, validateConfig } from './config';
 import { getOrCreateSessionNetwork, deleteSessionNetwork, getNetworkName, cleanupOrphanedNetworks, aggressiveBulkNetworkCleanup, getNetworkStats, getSubnetStats, getNetworkMetrics } from './networkManager';
 import { kernelManager } from './kernelManager';
-import { putFiles, execInteractive, execInContainer, pingDaemon, imageExists, type FileEntry } from './dockerClient';
+import { putFiles, execInteractive, execInContainer, pingDaemon, imageExists, docker, type FileEntry } from './dockerClient';
 import { pipelineMetrics, createStopwatch, type PipelineTimings } from './pipelineMetrics';
 import { logger } from './logger';
 
@@ -32,12 +32,13 @@ try {
 
 // Re-read environment variables into config after dotenv load
 (config.docker as any).memory = process.env.DOCKER_MEMORY || '512m';
+(config.docker as any).memoryPython = process.env.DOCKER_MEMORY_PYTHON || '2048m';
 (config.docker as any).memorySQL = process.env.DOCKER_MEMORY_SQL || '1024m';
 (config.docker as any).cpus = process.env.DOCKER_CPUS || '0.5';
 (config.docker as any).cpusNotebook = process.env.DOCKER_CPUS_NOTEBOOK || '1';
 (config.docker as any).timeout = process.env.DOCKER_TIMEOUT || '30s';
 
-logger.info('Server', `Loaded Docker config: memory=${config.docker.memory}, memorySQL=${config.docker.memorySQL}, cpus=${config.docker.cpus}`);
+logger.info('Server', `Loaded Docker config: memory=${config.docker.memory}, memoryPython=${config.docker.memoryPython}, memorySQL=${config.docker.memorySQL}, cpus=${config.docker.cpus}`);
 
 // Validate configuration at startup
 validateConfig();
@@ -675,6 +676,22 @@ io.on('connection', (socket) => {
               code = -1;
             }
 
+            if (code === 137 && containerId) {
+              try {
+                const info = await docker.getContainer(containerId).inspect();
+                const oomKilled = Boolean(info.State?.OOMKilled);
+                const running = Boolean(info.State?.Running);
+                const stateError = info.State?.Error || '';
+                logger.error('Execution', `Exit 137 diagnostics: container=${containerId.substring(0, 12)} language=${language} oomKilled=${oomKilled} running=${running} stateError=${stateError}`);
+                const hint = oomKilled
+                  ? 'Process killed by OOM (container memory limit reached).'
+                  : 'Process killed with SIGKILL (not marked as OOM by Docker).';
+                socket.emit('output', { sessionId, type: 'stderr', data: `[Diagnostics] ${hint}\n` });
+              } catch (inspectErr: any) {
+                logger.error('Execution', `Exit 137 diagnostics inspect failed: ${inspectErr?.message || inspectErr}`);
+              }
+            }
+
             // Track execution completion
             adminMetrics.trackExecutionEnded(executionId);
             adminMetrics.trackRequest({
@@ -711,14 +728,6 @@ io.on('connection', (socket) => {
           execSession.stderr.on('end', () => {
             // stderr may end before stdout; let stdout's end drive completion
           });
-
-          // Fallback: if both streams close without 'end', use a timeout
-          // Parse timeout properly — strip non-numeric suffix (e.g. '30s' -> 30)
-          const timeoutSec = parseInt(config.docker.timeout.replace(/[^0-9]/g, ''), 10);
-          const timeoutMs = (timeoutSec > 0 ? timeoutSec : 30) * 1000;
-          setTimeout(() => {
-            if (!ended) onEnd();
-          }, timeoutMs);
         });
       } catch (err: any) {
         logger.error('Execution', `Process error: ${err.message}`);
